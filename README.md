@@ -1,6 +1,39 @@
-# SwitchCast (Nintendo Switch OLED)
+<p align="center">
+  <img src="icon.jpg" width="160" height="160" alt="SwitchCast Icon" style="border-radius: 28px; box-shadow: 0 8px 32px rgba(0,229,255,0.3);">
+  <br>
+  <h1 align="center">SwitchCast</h1>
+  <p align="center">
+    <b>Receptor de mídia e streaming de alto desempenho para o Nintendo Switch</b><br>
+    <i>Versão 1.1.0 &bull; Desenvolvido por <b>Aleff959</b></i>
+  </p>
+  <p align="center">
+    <img src="https://img.shields.io/badge/Versão-1.1.0-FF2A55?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/C%2B%2B-20-00E5FF?style=flat-square" alt="C++20">
+    <img src="https://img.shields.io/badge/Plataforma-Nintendo_Switch_OLED-10B981?style=flat-square" alt="Nintendo Switch OLED">
+    <img src="https://img.shields.io/badge/Licença-MIT-blue?style=flat-square" alt="License">
+  </p>
+</p>
 
-Receptor de mídia e streaming de alto desempenho para o Nintendo Switch (com foco nas particularidades do painel **OLED**), implementado em **C++20** utilizando **libnx**, **libmpv** com aceleração de hardware **Tegra NVDEC** e servidor de rede embutido (**UPnP/DLNA**, **REST** e **WebSocket**).
+---
+
+**SwitchCast** é um homebrew de alto desempenho para o **Nintendo Switch (com foco nas particularidades do painel OLED)**, desenvolvido em **C++20**. Ele transforma o console em um receptor de mídia inteligente completo, com suporte a **UPnP/DLNA**, **Central Web de Controle Remoto**, decodificação por hardware **Tegra X1 NVDEC** (`nvtegra`) e renderização nativa em **OpenGL 4.3 / EGL**.
+
+---
+
+## ✨ Destaques e Funcionalidades
+
+- 📱 **Central Web de Controle Remoto Integrada (`http://<ip-do-switch>:8080`)**:
+  - Abra o navegador no PC ou celular para controlar reprodução, volume, arrastar a barra de progresso (seek) em tempo real e transmitir links diretos de vídeo/áudio (`.mp4`, `.mkv`, `.m3u8`, HLS, streams HTTP).
+- 🎮 **Identidade Visual Joy-Con Duo (Ciano Neon `#00E5FF` + Vermelho Neon `#FF2A55`)**:
+  - Interface desenvolvida para o painel OLED com preto absoluto (`#000000`) para desligamento físico de subpixels, economizando bateria e prevenindo burn-in.
+- ⚡ **Renderização 2D Nativa em OpenGL 4.3 + FreeType 2**:
+  - As fontes padrão do Nintendo Switch são lidas **diretamente da memória RAM** (`plGetSharedFontByType`), garantindo boot instantâneo em menos de 10ms sem desgastar o cartão microSD.
+- 🚀 **Aceleração por Hardware Tegra X1 (`nvtegra`)**:
+  - Reprodução suave a 60 FPS com baixo consumo de CPU via `libmpv` e pipeline de áudio nativo Horizon (`ao=hos` / `audren`).
+- 🔄 **Suporte Duplo: Modo Álbum (Applet) & Title Takeover (Application)**:
+  - Heap de memória adaptativo: funciona pelo Álbum com 16 MB de cache e libera 128 MB de buffer quando aberto via Title Takeover (segurando R ao abrir um jogo).
+- 📡 **Compatibilidade Universal com Apps Móveis**:
+  - Totalmente compatível com **BubbleUPnP**, **Web Video Caster**, **VLC Media Player**, **TV Assist** e comandos REST/WebSocket.
 
 ---
 
@@ -22,8 +55,9 @@ Receptor de mídia e streaming de alto desempenho para o Nintendo Switch (com fo
 │  │   ┌───────────────────┐               ┌───────────────────────┐  │  │
 │  │   │  Network Engine   │               │   UI & Display Engine │  │  │
 │  │   │ - CivetWeb HTTP   │ CommandQueue  │ - OpenGL 4.3 / EGL    │  │  │
-│  │   │ - WebSocket (/ws) │ ────────────> │ - OSD (mpv overlay)   │  │  │
-│  │   │ - SSDP (UDP 1900) │ (ThreadSafe)  │ - OLED Burn-in Guard  │  │  │
+│  │   │ - Web Remote SPA  │ ────────────> │ - Renderer2D Native   │  │  │
+│  │   │ - WebSocket (/ws) │ (ThreadSafe)  │ - FreeType Memory Font│  │  │
+│  │   │ - SSDP (UDP 1900) │               │ - OLED Burn-in Guard  │  │  │
 │  │   └─────────┬─────────┘               └───────────┬───────────┘  │  │
 │  │             │                                     │              │  │
 │  │             │ Media URL / Headers                 │ FBO Swap     │  │
@@ -32,37 +66,28 @@ Receptor de mídia e streaming de alto desempenho para o Nintendo Switch (com fo
 │  │   │             Playback Engine (libmpv + Tegra X1)           │  │  │
 │  │   │  - Hardware Decoder: Tegra NVDEC via nvtegra              │  │  │
 │  │   │  - Audio: Horizon audren nativo (ao=hos)                  │  │  │
-│  │   │  - Ring Buffer: 128 MB RAM + 30s readahead                │  │  │
+│  │   │  - Cache adaptativo: 16 MB (Álbum) / 128 MB (Takeover)    │  │  │
 │  │   └───────────────────────────────────────────────────────────┘  │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Divisão de Núcleos (Multi-core)
-- **Núcleo 0 (Core 0)**: Loop principal do aplicativo, manipulação de eventos do Horizon OS (`appletMainLoop`), leitura de controles/touch, despacho da fila de comandos e renderização gráfica OpenGL/EGL (`UIEngine`).
-- **Núcleo 1 (Core 1)**: Servidor HTTP/WebSocket (`CivetWeb`), listener UDP multicast SSDP (`239.255.255.250:1900`) e broadcast de telemetria WebSocket (fixados via `svcSetThreadCoreMask`).
-- **Núcleo 2 (Core 2)**: Threads de demuxing, decodificação e streaming de rede gerenciadas internamente pela `libmpv` e `ffmpeg`.
-
 ---
 
 ## 2. Decisões de Engenharia e Ajustes Técnicos no Horizon OS
 
-Durante o desenvolvimento sobre o toolchain oficial `devkitPro` / `libnx`, foram aplicados refinamentos críticos de engenharia:
-
 1. **Aceleração de Hardware Tegra X1 (`nvtegra`)**:
-   - No build de FFmpeg/libmpv do devkitPro para o Switch, o decodificador por hardware do Tegra X1 está registrado com o identificador de driver `nvtegra` (com fallback seguro para `auto-safe`), enquanto `nvdec` é a nomenclatura do backend CUDA para PCs com arquitetura desktop.
+   - No build de FFmpeg/libmpv do devkitPro para o Switch, o decodificador por hardware do Tegra X1 está registrado com o identificador de driver `nvtegra` (com fallback seguro para `auto-safe`).
 2. **Pipeline de Áudio (`ao=hos`)**:
-   - O áudio é gerenciado pelo backend nativo do mpv `ao=hos` (Horizon Audio Renderer - `audren`). Inicializar o `audren` separadamente no `main.cpp` causava conflito de posse do canal com a biblioteca. A inicialização agora fica centralizada e isolada no próprio player.
-3. **Gerenciamento de Sockets BSD e Wi-Fi**:
-   - A pilha BSD do Horizon (`socketInitialize`) foi configurada com buffers TCP expandidos (`tcp_rx_buf_size = 256KB`, `tcp_rx_buf_max_size = 1MB`) e 6 sessões simultâneas (`num_bsd_sessions = 6`), permitindo tráfego paralelo estável entre CivetWeb, SSDP, WebSocket e streaming de mídia sem estouro de sessões.
-4. **Alocação de Memória e Applet Mode**:
-   - O buffer de rede do SwitchCast requer 128 MB de RAM dedicados. O aplicativo verifica explicitamente `appletGetAppletType()` e exige execução em modo **Application** (Title Takeover - segurar `R` ao abrir qualquer jogo no Horizon OS), prevenindo travamento por esgotamento de memória no modo Applet (Álbum).
-5. **Renderização de OSD via ASS / `osd-overlay`**:
-   - Em vez de embutir uma engine pesada de fontes ou pipeline complexo de textura, as fontes oficiais do Horizon são exportadas via `plGetSharedFontByType` e fornecidas ao `libass` do mpv. O OSD é composto em tempo real como comandos ASS transmitidos ao `osd-overlay` do mpv, garantindo alinhamento perfeito com o vídeo e baixo consumo de CPU.
-6. **Otimizações para Painel OLED**:
+   - O áudio é gerenciado pelo backend nativo do mpv `ao=hos` (Horizon Audio Renderer - `audren`), evitando conflitos de inicialização concorrente.
+3. **Pilha de Sockets BSD**:
+   - Configurada de forma adaptativa para operar sem estourar sessões tanto no modo LibraryApplet (4 sessões) quanto em Application (6 sessões com buffer de até 1 MB).
+4. **Renderização 2D Própria e Desacoplada**:
+   - Como o `mpv_render_context_render` não renderiza legendas/OSD quando não há arquivo em reprodução (`idle=yes`), o SwitchCast possui o `Renderer2D`, um renderizador acelerado via shaders OpenGL 4.3 que desenha a interface do dashboard diretamente no framebuffer.
+5. **Otimizações para Painel OLED**:
    - **Zero-Pixel Powering**: O fundo e barras utilizam `#000000` absoluto, desligando fisicamente os subpixels OLED.
-   - **Dynamic Swap Interval**: Em repouso (sem vídeo), o `eglSwapInterval` é ajustado para 15 FPS, reduzindo drasticamente o consumo térmico e a bateria. Em reprodução de vídeo, sincroniza a 60 Hz.
-   - **Burn-In Guard**: Após 45s de ociosidade, o brilho da UI decai para 35% e os elementos sofrem micro-deslocamentos aleatórios de até ±4 pixels a cada 20s.
+   - **Dynamic Swap Interval**: Em repouso (dashboard), o `eglSwapInterval` é ajustado para 15 FPS, economizando bateria. Em reprodução de vídeo, sincroniza a 60 Hz.
+   - **Burn-In Guard**: Após inatividade, o brilho decai para 35% e os elementos sofrem micro-deslocamentos sutis a cada 20s.
 
 ---
 

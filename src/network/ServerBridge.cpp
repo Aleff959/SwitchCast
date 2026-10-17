@@ -281,7 +281,9 @@ int ServerBridge::HandleApi(mg_connection* conn) {
         return 200;
     }
     if (method == "GET" && route == "info") {
-        json info{{"name", mIdentity.friendlyName}, {"author", "Aleff959"}, {"uuid", mIdentity.uuid}, {"ip", CurrentIp()},
+        json info{{"name", mIdentity.friendlyName}, {"author", "Aleff959"},
+                  {"description", "Receptor de mídia e streaming de alto desempenho para Nintendo Switch OLED com aceleração NVDEC"},
+                  {"uuid", mIdentity.uuid}, {"ip", CurrentIp()},
                   {"httpPort", mIdentity.httpPort}, {"wsPort", mIdentity.wsPort}, {"version", "1.1.0"}};
         SendResponse(conn, 200, kJson, info.dump());
         return 200;
