@@ -39,8 +39,20 @@ public:
     void AdjustVolume(int delta);
     void SetMute(bool mute);
     void AddExternalSubtitle(const std::string& subtitleUrl);
-    void CycleAudioTrack();
-    void CycleSubtitleTrack();
+    std::string CycleAudioTrack();
+    std::string CycleSubtitleTrack();
+
+    // Controle do wallpaper animado de fundo no Switch
+    void StartWallpaperLoop();
+    void StopWallpaperLoop();
+    bool IsWallpaperActive() const;
+    struct TrackItem {
+        int id = 0;
+        std::string type;
+        std::string title;
+        std::string lang;
+        bool selected = false;
+    };
 
     // Overlay ASS (osd-overlay id 1) na resolução lógica `resX` x `resY`. String vazia remove.
     void SetOsdOverlay(const std::string& assEvents, int resX, int resY);
@@ -56,6 +68,8 @@ private:
         kObsTimePos = 1, kObsDuration, kObsPause, kObsVolume, kObsMute, kObsBuffering, kObsTitle,
     };
 
+    std::vector<TrackItem> GetTracks(const std::string& typeFilter = "");
+
     bool SetFirstSupportedOption(const char* name, const std::vector<const char*>& candidates);
     void ApplyHeaders(const std::map<std::string, std::string>& headers);
     void Command(const std::vector<std::string>& args, bool async = true);
@@ -68,6 +82,7 @@ private:
     PlayerSnapshot mSnapshot;      // protegido por mMutex
     bool mLoadRequested = false;   // ignora END_FILE(stop) do arquivo substituído
     bool mPausedProperty = false;
+    bool mIsWallpaper = false;     // reproduzindo vídeo decorativo em idle
     std::string mUserTitle;        // título vindo do controlador tem prioridade sobre media-title
 
     // Aplicados em MPV_EVENT_FILE_LOADED (loadfile é assíncrono).

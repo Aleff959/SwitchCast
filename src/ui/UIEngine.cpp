@@ -200,8 +200,8 @@ void UIEngine::DrainNetworkCommands() {
                 break;
             case NetworkCommand::Type::SetMute:      mPlayer->SetMute(cmd.flag); break;
             case NetworkCommand::Type::AddSubtitle:  mPlayer->AddExternalSubtitle(cmd.text); break;
-            case NetworkCommand::Type::CycleAudio:   mPlayer->CycleAudioTrack(); ShowToast("Audio: proxima faixa"); break;
-            case NetworkCommand::Type::CycleSubtitle: mPlayer->CycleSubtitleTrack(); ShowToast("Legenda: proxima faixa"); break;
+            case NetworkCommand::Type::CycleAudio:   ShowToast(mPlayer->CycleAudioTrack()); break;
+            case NetworkCommand::Type::CycleSubtitle: ShowToast(mPlayer->CycleSubtitleTrack()); break;
         }
     }
 }
@@ -232,8 +232,8 @@ void UIEngine::HandleButtons(u64 kDown) {
         ShowOsd(kOsdTimeoutSec);
     }
     if (kDown & HidNpadButton_B) mOsdVisibleUntil = 0;  // esconde o OSD
-    if (kDown & HidNpadButton_X) { mPlayer->CycleAudioTrack();    ShowToast("\xC3\x81udio: pr\xC3\xB3xima faixa"); }
-    if (kDown & HidNpadButton_Y) { mPlayer->CycleSubtitleTrack(); ShowToast("Legendas: pr\xC3\xB3xima faixa"); }
+    if (kDown & HidNpadButton_X) ShowToast(mPlayer->CycleAudioTrack());
+    if (kDown & HidNpadButton_Y) ShowToast(mPlayer->CycleSubtitleTrack());
     if (kDown & HidNpadButton_Up)    { mPlayer->SeekRelativeMs(kLongSeekMs);   ShowOsd(kOsdTimeoutSec); }
     if (kDown & HidNpadButton_Down)  { mPlayer->SeekRelativeMs(-kLongSeekMs);  ShowOsd(kOsdTimeoutSec); }
     if (kDown & HidNpadButton_Right) { mPlayer->SeekRelativeMs(kShortSeekMs);  ShowOsd(kOsdTimeoutSec); }
@@ -335,10 +335,11 @@ void UIEngine::Render() {
 
     const PlayerSnapshot snap = mPlayer->Snapshot();
     const bool hasMedia = (snap.state != PlaybackState::Idle);
+    const bool isWallpaper = mPlayer->IsWallpaperActive();
 
-    // Sem mídia (dashboard): 15 fps bastam e economizam muita bateria no Switch.
-    // Com mídia: vsync normal a 60 fps.
-    const int interval = hasMedia ? 1 : 4;
+    // Com mídia ou wallpaper animado em segundo plano: vsync a 60 fps.
+    // Sem mídia ou wallpaper: 15 fps bastam e economizam bateria.
+    const int interval = (hasMedia || isWallpaper) ? 1 : 4;
     if (interval != mSwapInterval) {
         eglSwapInterval(mDisplay, interval);
         mSwapInterval = interval;
@@ -364,13 +365,35 @@ void UIEngine::Render() {
         eglSwapBuffers(mDisplay, mSurface);
         mpv_render_context_report_swap(mRender);
     } else {
-        RenderDashboard(snap);
+        if (isWallpaper) {
+            mpv_render_context_update(mRender);
+            mpv_opengl_fbo fbo{0, mWidth, mHeight, 0};
+            int flipY = 1;
+            mpv_render_param params[] = {
+                {MPV_RENDER_PARAM_OPENGL_FBO, &fbo},
+                {MPV_RENDER_PARAM_FLIP_Y, &flipY},
+                {MPV_RENDER_PARAM_INVALID, nullptr},
+            };
+            mpv_render_context_render(mRender, params);
+        }
+
+        RenderDashboard(snap, isWallpaper);
         eglSwapBuffers(mDisplay, mSurface);
+        if (isWallpaper) {
+            mpv_render_context_report_swap(mRender);
+        }
     }
 }
 
-void UIEngine::RenderDashboard(const PlayerSnapshot&) {
+void UIEngine::RenderDashboard(const PlayerSnapshot&, bool hasWallpaper) {
     mRenderer.BeginFrame(mWidth, mHeight);
+
+    // Se houver vídeo animado no fundo, aplica um filtro escuro sutil para garantir
+    // legibilidade de nível de cinema e contraste premium em todos os textos e cards
+    if (hasWallpaper) {
+        mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight),
+                           Color::Rgba(0, 0, 0, 115));
+    }
 
     const float ox = mBurnIn.OffsetX();
     const float oy = mBurnIn.OffsetY();

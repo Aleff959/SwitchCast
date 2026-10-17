@@ -89,6 +89,7 @@ int main(int, char**) {
     const bool uiOk = playerOk && ui->Initialize();
 
     if (uiOk) {
+        player->StartWallpaperLoop();
         appletHook(&g_appletHookCookie, OnAppletHook, ui.get());
 
         // 5. Servidor de rede (threads próprias, núcleo 1)

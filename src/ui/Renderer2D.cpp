@@ -182,7 +182,7 @@ bool Renderer2D::InitFont() {
     // Configura o tamanho base do glifo para 36px
     FT_Set_Pixel_Sizes(face, 0, 36);
 
-    mAtlasWidth = 512;
+    mAtlasWidth = 1024;
     mAtlasHeight = 512;
     std::vector<uint8_t> atlasData(mAtlasWidth * mAtlasHeight, 0);
 
@@ -190,7 +190,8 @@ bool Renderer2D::InitFont() {
     int curY = 1;
     int maxRowH = 0;
 
-    for (unsigned char c = 32; c < 127; ++c) {
+    for (int c = 32; c < 256; ++c) {
+        if (c > 126 && c < 160) continue; // Faixa de controle não imprimível do Latin-1
         if (FT_Load_Char(face, c, FT_LOAD_RENDER) != 0) continue;
 
         FT_Bitmap& bmp = face->glyph->bitmap;
@@ -367,16 +368,43 @@ void Renderer2D::DrawProgressBar(float x, float y, float w, float h, float progr
     }
 }
 
+namespace {
+inline int NextUtf8CodePoint(const std::string& text, size_t& i) {
+    unsigned char c = static_cast<unsigned char>(text[i]);
+    if (c < 0x80) {
+        return c;
+    }
+    // Sequência de 2 bytes (0xC0 a 0xDF) ex.: acentos comuns como á, é, í, ó, ú, ç, ã
+    if ((c & 0xE0) == 0xC0 && i + 1 < text.size()) {
+        unsigned char c2 = static_cast<unsigned char>(text[i + 1]);
+        if ((c2 & 0xC0) == 0x80) {
+            i += 1;
+            return ((c & 0x1F) << 6) | (c2 & 0x3F);
+        }
+    }
+    // Sequência de 3 bytes (0xE0 a 0xEF)
+    else if ((c & 0xF0) == 0xE0 && i + 2 < text.size()) {
+        unsigned char c2 = static_cast<unsigned char>(text[i + 1]);
+        unsigned char c3 = static_cast<unsigned char>(text[i + 2]);
+        if ((c2 & 0xC0) == 0x80 && (c3 & 0xC0) == 0x80) {
+            i += 2;
+            return ((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
+        }
+    }
+    return c;
+}
+}  // namespace
+
 float Renderer2D::MeasureTextWidth(const std::string& text, float size) {
     float scale = size / 36.0f;
     float width = 0.0f;
-    for (char c : text) {
-        unsigned char uc = (unsigned char)c;
-        if (uc < 32 || uc >= 127) {
+    for (size_t i = 0; i < text.size(); ++i) {
+        int code = NextUtf8CodePoint(text, i);
+        if (code >= 32 && code < 256 && mGlyphs[code].advance > 0) {
+            width += mGlyphs[code].advance * scale;
+        } else if (code >= 32) {
             width += 18.0f * scale;
-            continue;
         }
-        width += mGlyphs[uc].advance * scale;
     }
     return width;
 }
@@ -402,24 +430,22 @@ void Renderer2D::DrawText(float x, float y, const std::string& text, float size,
         drawX -= MeasureTextWidth(text, size);
     }
 
-    for (char c : text) {
-        unsigned char uc = (unsigned char)c;
-        if (uc < 32 || uc >= 127) {
-            drawX += 18.0f * scale;
-            continue;
-        }
+    for (size_t i = 0; i < text.size(); ++i) {
+        int code = NextUtf8CodePoint(text, i);
+        if (code < 32) continue;
 
-        const GlyphInfo& g = mGlyphs[uc];
-        if (g.width > 0 && g.height > 0) {
+        if (code < 256 && mGlyphs[code].width > 0 && mGlyphs[code].height > 0) {
+            const GlyphInfo& g = mGlyphs[code];
             float x0 = drawX + g.bearingX * scale;
             float y0 = y + (36.0f * scale) - (g.bearingY * scale);
             float x1 = x0 + g.width * scale;
             float y1 = y0 + g.height * scale;
 
             PushQuad(x0, y0, x1, y1, g.u0, g.v0, g.u1, g.v1, color);
+            drawX += g.advance * scale;
+        } else {
+            drawX += 18.0f * scale;
         }
-
-        drawX += g.advance * scale;
     }
 }
 

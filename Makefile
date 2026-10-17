@@ -33,7 +33,7 @@ CFLAGS      += -DSWITCHCAST_DEBUG
 endif
 CXXFLAGS    := $(CFLAGS) -std=gnu++20 -Wno-deprecated-declarations
 ASFLAGS     := -g $(ARCH)
-LDFLAGS      = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,--gc-sections -Wl,-Map,$(notdir $*.map)
+LDFLAGS      = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,--gc-sections
 
 # Ordem importa (linkagem estática). `aarch64-none-elf-pkg-config --static --libs mpv`
 # produz uma lista equivalente caso as portlibs mudem.

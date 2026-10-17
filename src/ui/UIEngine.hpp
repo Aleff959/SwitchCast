@@ -58,7 +58,7 @@ private:
     void ShowToast(const std::string& text, double seconds = 1.5);
     void ApplyPendingDisplayMode();
     void SetBrightness(float value);
-    void RenderDashboard(const PlayerSnapshot& snap);
+    void RenderDashboard(const PlayerSnapshot& snap, bool hasWallpaper = false);
     void RenderVideoOverlay(const PlayerSnapshot& snap);
 
     std::shared_ptr<MpvPlayer> mPlayer;

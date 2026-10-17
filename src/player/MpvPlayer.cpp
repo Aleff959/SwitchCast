@@ -44,6 +44,8 @@ bool MpvPlayer::Initialize(const std::string& fontsDir) {
     opt("input-default-bindings", "no");
     opt("input-vo-keyboard", "no");
     opt("osd-level", "0");  // o OSD é desenhado por nós via osd-overlay
+    opt("osd-bar", "no");
+    opt("osd-on-seek", "no");
     opt("sub-auto", "no");
     opt("audio-display", "no");
     opt("save-position-on-quit", "no");
@@ -149,6 +151,14 @@ void MpvPlayer::ApplyHeaders(const std::map<std::string, std::string>& headers) 
 void MpvPlayer::LoadMedia(const MediaPayload& media) {
     if (!mMpv || media.url.empty()) return;
 
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mIsWallpaper = false;
+    }
+    mpv_set_property_string(mMpv, "loop-file", "no");
+    mpv_set_property_string(mMpv, "aid", "auto");
+    mpv_set_property_string(mMpv, "sid", "auto");
+
     ApplyHeaders(media.headers);
     mpv_set_property_string(mMpv, "pause", media.autoPlay ? "no" : "yes");
 
@@ -192,7 +202,7 @@ void MpvPlayer::Stop() {
         mSnapshot.volume = volume;
         mSnapshot.muted = muted;
     }
-    Command({"stop"});
+    StartWallpaperLoop();
 }
 
 void MpvPlayer::SeekAbsoluteMs(int64_t ms) {
@@ -228,8 +238,213 @@ void MpvPlayer::AddExternalSubtitle(const std::string& subtitleUrl) {
     if (!subtitleUrl.empty()) Command({"sub-add", subtitleUrl, "cached"});
 }
 
-void MpvPlayer::CycleAudioTrack()    { Command({"cycle", "audio"}); }
-void MpvPlayer::CycleSubtitleTrack() { Command({"cycle", "sub"}); }
+// ---------------------------------------------------------------------------
+// Faixas de Áudio e Legenda com nomes amigáveis e sem perder áudio
+// ---------------------------------------------------------------------------
+std::vector<MpvPlayer::TrackItem> MpvPlayer::GetTracks(const std::string& typeFilter) {
+    std::vector<TrackItem> result;
+    if (!mMpv) return result;
+
+    mpv_node node{};
+    if (mpv_get_property(mMpv, "track-list", MPV_FORMAT_NODE, &node) < 0) {
+        return result;
+    }
+
+    if (node.format == MPV_FORMAT_NODE_ARRAY && node.u.list) {
+        for (int i = 0; i < node.u.list->num; ++i) {
+            const mpv_node& item = node.u.list->values[i];
+            if (item.format != MPV_FORMAT_NODE_MAP || !item.u.list) continue;
+
+            TrackItem t;
+            for (int k = 0; k < item.u.list->num; ++k) {
+                const char* key = item.u.list->keys[k];
+                const mpv_node& val = item.u.list->values[k];
+                if (!key) continue;
+
+                if (std::strcmp(key, "type") == 0 && val.format == MPV_FORMAT_STRING) {
+                    t.type = val.u.string ? val.u.string : "";
+                } else if (std::strcmp(key, "id") == 0 && val.format == MPV_FORMAT_INT64) {
+                    t.id = static_cast<int>(val.u.int64);
+                } else if (std::strcmp(key, "selected") == 0 && val.format == MPV_FORMAT_FLAG) {
+                    t.selected = (val.u.flag != 0);
+                } else if (std::strcmp(key, "title") == 0 && val.format == MPV_FORMAT_STRING) {
+                    t.title = val.u.string ? val.u.string : "";
+                } else if (std::strcmp(key, "lang") == 0 && val.format == MPV_FORMAT_STRING) {
+                    t.lang = val.u.string ? val.u.string : "";
+                }
+            }
+
+            if (typeFilter.empty() || t.type == typeFilter) {
+                result.push_back(std::move(t));
+            }
+        }
+    }
+
+    mpv_free_node_contents(&node);
+    return result;
+}
+
+namespace {
+std::string FriendlyTrackName(const MpvPlayer::TrackItem& t, int index, int total, bool isAudio) {
+    std::string lang = t.lang;
+    for (char& c : lang) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    std::string label;
+    if (lang == "por" || lang == "pt" || lang == "pob" || lang == "pt-br") label = "Portugues";
+    else if (lang == "eng" || lang == "en" || lang == "en-us" || lang == "en-gb") label = "Ingles";
+    else if (lang == "spa" || lang == "es") label = "Espanhol";
+    else if (lang == "jpn" || lang == "ja") label = "Japones";
+    else if (lang == "fra" || lang == "fre" || lang == "fr") label = "Frances";
+    else if (lang == "deu" || lang == "ger" || lang == "de") label = "Alemao";
+    else if (lang == "ita" || lang == "it") label = "Italiano";
+    else if (lang == "kor" || lang == "ko") label = "Coreano";
+    else if (lang == "rus" || lang == "ru") label = "Russo";
+    else if (lang == "zho" || lang == "chi" || lang == "zh") label = "Chines";
+    else if (!t.title.empty()) label = t.title;
+
+    std::string prefix = isAudio ? "Audio " : "Legenda ";
+    if (total > 1) {
+        prefix += std::to_string(index + 1) + "/" + std::to_string(total);
+    } else {
+        prefix += "Faixa 1";
+    }
+
+    if (!label.empty() && label != "und") {
+        return prefix + " (" + label + ")";
+    }
+    return prefix;
+}
+}  // namespace
+
+std::string MpvPlayer::CycleAudioTrack() {
+    if (!mMpv) return "Audio indisponivel";
+
+    auto tracks = GetTracks("audio");
+    if (tracks.empty()) {
+        return "Nenhuma faixa de audio encontrada";
+    }
+
+    if (tracks.size() == 1) {
+        // Se só existe 1 faixa de áudio, certifique-se de que está ativa e NUNCA silencie
+        std::string idStr = std::to_string(tracks[0].id);
+        mpv_set_property_string(mMpv, "aid", idStr.c_str());
+        return FriendlyTrackName(tracks[0], 0, 1, true) + " (Unica)";
+    }
+
+    int currentIndex = -1;
+    for (size_t i = 0; i < tracks.size(); ++i) {
+        if (tracks[i].selected) {
+            currentIndex = static_cast<int>(i);
+            break;
+        }
+    }
+
+    // Cicla somente entre as faixas válidas (0 -> 1 -> ... -> N-1 -> 0), nunca para 'no'
+    int nextIndex = (currentIndex + 1) % static_cast<int>(tracks.size());
+    std::string nextIdStr = std::to_string(tracks[nextIndex].id);
+    mpv_set_property_string(mMpv, "aid", nextIdStr.c_str());
+
+    return FriendlyTrackName(tracks[nextIndex], nextIndex, static_cast<int>(tracks.size()), true);
+}
+
+std::string MpvPlayer::CycleSubtitleTrack() {
+    if (!mMpv) return "Legendas indisponiveis";
+
+    auto tracks = GetTracks("sub");
+    if (tracks.empty()) {
+        return "Sem legendas disponiveis";
+    }
+
+    int currentIndex = -1;
+    for (size_t i = 0; i < tracks.size(); ++i) {
+        if (tracks[i].selected) {
+            currentIndex = static_cast<int>(i);
+            break;
+        }
+    }
+
+    // Se nenhuma estiver ativa (currentIndex == -1): ativa a primeira faixa
+    // Se a última estiver ativa (currentIndex == tracks.size() - 1): desativa as legendas (sid = "no")
+    // Senão: vai para a próxima faixa
+    if (currentIndex == -1) {
+        std::string idStr = std::to_string(tracks[0].id);
+        mpv_set_property_string(mMpv, "sid", idStr.c_str());
+        return FriendlyTrackName(tracks[0], 0, static_cast<int>(tracks.size()), false);
+    } else if (currentIndex + 1 < static_cast<int>(tracks.size())) {
+        int nextIndex = currentIndex + 1;
+        std::string nextIdStr = std::to_string(tracks[nextIndex].id);
+        mpv_set_property_string(mMpv, "sid", nextIdStr.c_str());
+        return FriendlyTrackName(tracks[nextIndex], nextIndex, static_cast<int>(tracks.size()), false);
+    } else {
+        mpv_set_property_string(mMpv, "sid", "no");
+        return "Legendas: Desativadas";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Wallpaper animado em Idle no Horizon OS
+// ---------------------------------------------------------------------------
+void MpvPlayer::StartWallpaperLoop() {
+    if (!mMpv) return;
+
+    static const char* kCandidatePaths[] = {
+        "sdmc:/switch/SwitchCast/wallpaper.mp4",
+        "romfs:/wallpaper.mp4",
+        "switch/SwitchCast/wallpaper.mp4",
+        "wallpaper.mp4"
+    };
+
+    std::string wallpaperPath;
+    for (const char* p : kCandidatePaths) {
+        FILE* f = std::fopen(p, "rb");
+        if (f) {
+            std::fclose(f);
+            wallpaperPath = p;
+            break;
+        }
+    }
+
+    if (wallpaperPath.empty()) {
+        Command({"stop"});
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mIsWallpaper = true;
+        mLoadRequested = false;
+        const int volume = mSnapshot.volume;
+        const bool muted = mSnapshot.muted;
+        mSnapshot = PlayerSnapshot{};
+        mSnapshot.volume = volume;
+        mSnapshot.muted = muted;
+        mSnapshot.state = PlaybackState::Idle;
+    }
+
+    mpv_set_property_string(mMpv, "loop-file", "inf");
+    mpv_set_property_string(mMpv, "aid", "no");
+    mpv_set_property_string(mMpv, "sid", "no");
+    mpv_set_property_string(mMpv, "pause", "no");
+    Command({"loadfile", wallpaperPath, "replace"});
+}
+
+void MpvPlayer::StopWallpaperLoop() {
+    if (!mMpv) return;
+    {
+        std::lock_guard<std::mutex> lock(mMutex);
+        if (!mIsWallpaper) return;
+        mIsWallpaper = false;
+    }
+    mpv_set_property_string(mMpv, "loop-file", "no");
+    mpv_set_property_string(mMpv, "aid", "auto");
+    mpv_set_property_string(mMpv, "sid", "auto");
+    Command({"stop"});
+}
+
+bool MpvPlayer::IsWallpaperActive() const {
+    std::lock_guard<std::mutex> lock(mMutex);
+    return mIsWallpaper;
+}
 
 void MpvPlayer::SetOsdOverlay(const std::string& assEvents, int resX, int resY) {
     if (assEvents.empty()) {
@@ -241,11 +456,19 @@ void MpvPlayer::SetOsdOverlay(const std::string& assEvents, int resX, int resY) 
 
 PlayerSnapshot MpvPlayer::Snapshot() const {
     std::lock_guard<std::mutex> lock(mMutex);
+    if (mIsWallpaper) {
+        PlayerSnapshot s;
+        s.volume = mSnapshot.volume;
+        s.muted = mSnapshot.muted;
+        s.state = PlaybackState::Idle;
+        return s;
+    }
     return mSnapshot;
 }
 
 bool MpvPlayer::HasMedia() const {
     std::lock_guard<std::mutex> lock(mMutex);
+    if (mIsWallpaper) return false;
     return mSnapshot.state != PlaybackState::Idle;
 }
 
@@ -261,6 +484,16 @@ void MpvPlayer::PumpEvents() {
 void MpvPlayer::HandleEvent(const mpv_event& ev) {
     switch (ev.event_id) {
         case MPV_EVENT_FILE_LOADED: {
+            bool isWallpaper = false;
+            {
+                std::lock_guard<std::mutex> lock(mMutex);
+                isWallpaper = mIsWallpaper;
+            }
+            if (isWallpaper) {
+                std::lock_guard<std::mutex> lock(mMutex);
+                mSnapshot.state = PlaybackState::Idle;
+                break;
+            }
             int64_t seekMs = 0;
             std::vector<std::string> subs;
             {
@@ -277,19 +510,31 @@ void MpvPlayer::HandleEvent(const mpv_event& ev) {
         }
         case MPV_EVENT_END_FILE: {
             const auto* end = static_cast<const mpv_event_end_file*>(ev.data);
-            std::lock_guard<std::mutex> lock(mMutex);
+            bool isWallpaper = false;
+            {
+                std::lock_guard<std::mutex> lock(mMutex);
+                isWallpaper = mIsWallpaper;
+            }
+            if (isWallpaper) {
+                break;
+            }
+
             // Um `loadfile replace` gera END_FILE(stop) do arquivo antigo: não é "ocioso".
             if (end->reason == MPV_END_FILE_REASON_STOP && mLoadRequested) break;
 
-            const int volume = mSnapshot.volume;
-            const bool muted = mSnapshot.muted;
-            const std::string err =
-                end->reason == MPV_END_FILE_REASON_ERROR ? mpv_error_string(end->error) : std::string();
-            mSnapshot = PlayerSnapshot{};
-            mSnapshot.volume = volume;
-            mSnapshot.muted = muted;
-            mSnapshot.lastError = err;
-            mLoadRequested = false;
+            {
+                std::lock_guard<std::mutex> lock(mMutex);
+                const int volume = mSnapshot.volume;
+                const bool muted = mSnapshot.muted;
+                const std::string err =
+                    end->reason == MPV_END_FILE_REASON_ERROR ? mpv_error_string(end->error) : std::string();
+                mSnapshot = PlayerSnapshot{};
+                mSnapshot.volume = volume;
+                mSnapshot.muted = muted;
+                mSnapshot.lastError = err;
+                mLoadRequested = false;
+            }
+            StartWallpaperLoop();
             break;
         }
         case MPV_EVENT_PROPERTY_CHANGE: {
@@ -311,6 +556,15 @@ void MpvPlayer::HandleEvent(const mpv_event& ev) {
 
 void MpvPlayer::HandlePropertyChange(const mpv_event_property& prop, uint64_t id) {
     std::lock_guard<std::mutex> lock(mMutex);
+    if (mIsWallpaper) {
+        if (id == kObsVolume && prop.format == MPV_FORMAT_DOUBLE) {
+            mSnapshot.volume = std::clamp(static_cast<int>(*static_cast<double*>(prop.data) + 0.5), 0, 100);
+        } else if (id == kObsMute && prop.format == MPV_FORMAT_FLAG) {
+            mSnapshot.muted = *static_cast<int*>(prop.data) != 0;
+        }
+        return;
+    }
+
     switch (id) {
         case kObsTimePos:
             if (prop.format == MPV_FORMAT_DOUBLE)
