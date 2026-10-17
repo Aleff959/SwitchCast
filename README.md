@@ -4,10 +4,10 @@
   <h1 align="center">SwitchCast</h1>
   <p align="center">
     <b>Receptor de mídia e streaming de alto desempenho para o Nintendo Switch</b><br>
-    <i>Versão 1.1.0 &bull; Desenvolvido por <b>Aleff959</b></i>
+    <i>Versão 1.2.0 &bull; Desenvolvido por <b>Aleff959</b></i>
   </p>
   <p align="center">
-    <img src="https://img.shields.io/badge/Versão-1.1.0-FF2A55?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/Versão-1.2.0-FF2A55?style=flat-square" alt="Version">
     <img src="https://img.shields.io/badge/C%2B%2B-20-00E5FF?style=flat-square" alt="C++20">
     <img src="https://img.shields.io/badge/Plataforma-Nintendo_Switch_OLED-10B981?style=flat-square" alt="Nintendo Switch OLED">
     <img src="https://img.shields.io/badge/Licença-MIT-blue?style=flat-square" alt="License">

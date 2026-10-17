@@ -208,7 +208,7 @@ std::string BuildDeviceDescription(const DeviceIdentity& id) {
     xml += std::string("<deviceType>") + kDeviceType + "</deviceType>";
     xml += "<friendlyName>" + Text::XmlEscape(id.friendlyName) + "</friendlyName>";
     xml += "<manufacturer>Aleff959</manufacturer><modelDescription>SwitchCast Media Renderer</modelDescription>"
-           "<modelName>SwitchCast</modelName><modelNumber>1.1.0</modelNumber>";
+           "<modelName>SwitchCast</modelName><modelNumber>1.2.0</modelNumber>";
     xml += "<UDN>uuid:" + id.uuid + "</UDN><serviceList>";
     xml += ServiceBlock(Service::AVTransport);
     xml += ServiceBlock(Service::RenderingControl);

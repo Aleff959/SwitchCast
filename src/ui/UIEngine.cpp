@@ -406,7 +406,7 @@ void UIEngine::RenderDashboard(const PlayerSnapshot&, bool hasWallpaper) {
     mRenderer.DrawText(48.0f + ox + switchW, topY, "CAST", 26.0f, Color::Hex(0xFF2A55, dim), TextAlign::Left);
 
     const float brandW = switchW + mRenderer.MeasureTextWidth("CAST", 26.0f);
-    mRenderer.DrawText(48.0f + ox + brandW + 14.0f, topY + 7.0f, "v1.1.0 by Aleff959", 14.0f, Color::Hex(0x8C9FB5, dim), TextAlign::Left);
+    mRenderer.DrawText(48.0f + ox + brandW + 14.0f, topY + 7.0f, "v1.2.0 by Aleff959", 14.0f, Color::Hex(0x8C9FB5, dim), TextAlign::Left);
 
     // Pill de resolução / modo
     const std::string modeStr = (mMode == DisplayMode::DOCKED_1080P) ? "DOCKED 1080p" : "OLED 720p";
