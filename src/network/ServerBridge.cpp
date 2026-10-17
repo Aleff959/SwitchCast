@@ -39,7 +39,7 @@ void SendResponse(mg_connection* conn, int status, const char* contentType, cons
     mg_printf(conn,
               "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
               "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Content-Type\r\n"
-              "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nServer: SwitchCast/1.0\r\n%s\r\n",
+              "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nServer: SwitchCast/1.1.0\r\n%s\r\n",
               status, text, contentType, body.size(), extraHeaders.c_str());
     if (!body.empty()) mg_write(conn, body.data(), body.size());
 }

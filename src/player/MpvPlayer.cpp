@@ -131,7 +131,7 @@ void MpvPlayer::ApplyHeaders(const std::map<std::string, std::string>& headers) 
         else lines.push_back(key + ": " + value);
     }
 
-    mpv_set_property_string(mMpv, "user-agent", userAgent.empty() ? "SwitchCast/1.0" : userAgent.c_str());
+    mpv_set_property_string(mMpv, "user-agent", userAgent.empty() ? "SwitchCast/1.1.0" : userAgent.c_str());
     mpv_set_property_string(mMpv, "referrer", referrer.c_str());
 
     std::vector<mpv_node> items(lines.size());

@@ -207,8 +207,8 @@ std::string BuildDeviceDescription(const DeviceIdentity& id) {
            "<dlna:X_DLNADOC>DMR-1.50</dlna:X_DLNADOC>";
     xml += std::string("<deviceType>") + kDeviceType + "</deviceType>";
     xml += "<friendlyName>" + Text::XmlEscape(id.friendlyName) + "</friendlyName>";
-    xml += "<manufacturer>SwitchCast</manufacturer><modelDescription>SwitchCast Media Renderer</modelDescription>"
-           "<modelName>SwitchCast</modelName><modelNumber>1.0</modelNumber>";
+    xml += "<manufacturer>Aleff959</manufacturer><modelDescription>SwitchCast Media Renderer</modelDescription>"
+           "<modelName>SwitchCast</modelName><modelNumber>1.1.0</modelNumber>";
     xml += "<UDN>uuid:" + id.uuid + "</UDN><serviceList>";
     xml += ServiceBlock(Service::AVTransport);
     xml += ServiceBlock(Service::RenderingControl);
