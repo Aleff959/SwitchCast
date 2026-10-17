@@ -1,0 +1,18 @@
+# Build outputs
+build/
+*.elf
+*.nacp
+*.map
+*.o
+*.d
+*.log
+
+# Operating System
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary and editor files
+.vscode/
+.idea/
+*.tmp
