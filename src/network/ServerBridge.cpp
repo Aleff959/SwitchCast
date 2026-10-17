@@ -2,7 +2,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "Upnp.hpp"
@@ -299,6 +302,116 @@ int ServerBridge::HandleApi(mg_connection* conn) {
 
 // ---------------------------------------------------------------------------
 // HTTP: Web Remote
+namespace {
+
+int ServeWallpaper(mg_connection* conn, const mg_request_info* ri) {
+    static const char* kCandidatePaths[] = {
+        "sdmc:/switch/SwitchCast/wallpaper.mp4",
+        "romfs:/wallpaper.mp4",
+        "switch/SwitchCast/wallpaper.mp4",
+        "wallpaper.mp4",
+        "./wallpaper.mp4"
+    };
+
+    FILE* f = nullptr;
+    for (const char* p : kCandidatePaths) {
+        f = std::fopen(p, "rb");
+        if (f) break;
+    }
+
+    if (!f) {
+        SendResponse(conn, 404, "text/plain", "Wallpaper not found");
+        return 404;
+    }
+
+    std::fseek(f, 0, SEEK_END);
+    const long fileSize = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+
+    if (fileSize <= 0) {
+        std::fclose(f);
+        SendResponse(conn, 500, "text/plain", "Invalid wallpaper file");
+        return 500;
+    }
+
+    const char* rangeHdr = nullptr;
+    for (int i = 0; i < ri->num_headers; ++i) {
+        if (strcasecmp(ri->http_headers[i].name, "Range") == 0) {
+            rangeHdr = ri->http_headers[i].value;
+            break;
+        }
+    }
+
+    long startByte = 0;
+    long endByte = fileSize - 1;
+    bool isPartial = false;
+
+    if (rangeHdr && std::strncmp(rangeHdr, "bytes=", 6) == 0) {
+        const char* p = rangeHdr + 6;
+        char* endPtr = nullptr;
+        long s = std::strtol(p, &endPtr, 10);
+        if (endPtr != p) {
+            startByte = s;
+            if (*endPtr == '-') {
+                if (*(endPtr + 1) != '\0') {
+                    long e = std::strtol(endPtr + 1, nullptr, 10);
+                    if (e >= startByte && e < fileSize) endByte = e;
+                }
+            }
+            isPartial = true;
+        }
+    }
+
+    if (startByte < 0 || startByte >= fileSize) {
+        std::fclose(f);
+        mg_printf(conn,
+                  "HTTP/1.1 416 Range Not Satisfiable\r\n"
+                  "Content-Range: bytes */%ld\r\nConnection: close\r\n\r\n",
+                  fileSize);
+        return 416;
+    }
+
+    const long contentLength = endByte - startByte + 1;
+    std::fseek(f, startByte, SEEK_SET);
+
+    if (isPartial) {
+        mg_printf(conn,
+                  "HTTP/1.1 206 Partial Content\r\n"
+                  "Content-Type: video/mp4\r\n"
+                  "Content-Length: %ld\r\n"
+                  "Content-Range: bytes %ld-%ld/%ld\r\n"
+                  "Accept-Ranges: bytes\r\n"
+                  "Cache-Control: public, max-age=86400\r\n"
+                  "Connection: close\r\n\r\n",
+                  contentLength, startByte, endByte, fileSize);
+    } else {
+        mg_printf(conn,
+                  "HTTP/1.1 200 OK\r\n"
+                  "Content-Type: video/mp4\r\n"
+                  "Content-Length: %ld\r\n"
+                  "Accept-Ranges: bytes\r\n"
+                  "Cache-Control: public, max-age=86400\r\n"
+                  "Connection: close\r\n\r\n",
+                  fileSize);
+    }
+
+    char buf[32768];
+    long remaining = contentLength;
+    while (remaining > 0) {
+        size_t toRead = static_cast<size_t>(std::min<long>(remaining, sizeof(buf)));
+        size_t n = std::fread(buf, 1, toRead, f);
+        if (n == 0) break;
+        int sent = mg_write(conn, buf, n);
+        if (sent <= 0) break;
+        remaining -= sent;
+    }
+
+    std::fclose(f);
+    return isPartial ? 206 : 200;
+}
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 int ServerBridge::HttpWebRemote(mg_connection* conn, void* self) {
     return static_cast<ServerBridge*>(self)->HandleWebRemote(conn);
@@ -326,6 +439,10 @@ int ServerBridge::HandleWebRemote(mg_connection* conn) {
                   kAppIconJpgSize);
         mg_write(conn, kAppIconJpg, kAppIconJpgSize);
         return 200;
+    }
+
+    if (path == "/wallpaper.mp4") {
+        return ServeWallpaper(conn, ri);
     }
 
     SendResponse(conn, 404, "text/plain", "Not Found");

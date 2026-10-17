@@ -65,8 +65,7 @@ bool InitSockets() {
 
 int main(int, char**) {
     // 1. Serviços do Horizon OS
-
-    // 2. Serviços do Horizon OS
+    const bool romfsOk = R_SUCCEEDED(romfsInit());
     nifmInitialize(NifmServiceType_User);  // IP atual do Wi-Fi
     const bool socketsOk = InitSockets();  // BSD sockets (civetweb, SSDP, rede do mpv)
 #ifdef SWITCHCAST_DEBUG
@@ -117,5 +116,6 @@ int main(int, char**) {
     appletSetMediaPlaybackState(false);
     if (socketsOk) socketExit();
     nifmExit();
+    if (romfsOk) romfsExit();
     return uiOk ? 0 : 1;
 }

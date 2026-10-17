@@ -71,6 +71,11 @@ export APP_ICON := $(CURDIR)/icon.jpg
 export NROFLAGS += --icon=$(CURDIR)/icon.jpg
 endif
 
+ifneq ($(wildcard $(CURDIR)/romfs),)
+export ROMFS_DIR := $(CURDIR)/romfs
+export NROFLAGS += --romfsdir=$(CURDIR)/romfs
+endif
+
 export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
 
 .PHONY: $(BUILD) clean all
@@ -93,7 +98,7 @@ DEPENDS := $(OFILES:.o=.d)
 
 all: $(OUTPUT).nro
 
-$(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp $(APP_ICON)
+$(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp $(APP_ICON) $(wildcard $(ROMFS_DIR)/*)
 $(OUTPUT).elf: $(OFILES)
 
 -include $(DEPENDS)

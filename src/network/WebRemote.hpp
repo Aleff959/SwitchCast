@@ -42,6 +42,31 @@ inline const char* GetWebRemoteHtml() {
       display: flex;
       flex-direction: column;
       align-items: center;
+      overflow-x: hidden;
+    }
+    /* Animated Video Wallpaper */
+    .bg-video {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      z-index: -2;
+      opacity: 0.38;
+      filter: saturate(1.25) brightness(0.85);
+      pointer-events: none;
+      transition: opacity 1s ease;
+    }
+    .bg-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: -1;
+      background: radial-gradient(circle at 50% 20%, rgba(9, 11, 16, 0.40) 0%, rgba(9, 11, 16, 0.88) 100%);
+      pointer-events: none;
     }
     .container {
       width: 100%;
@@ -348,6 +373,12 @@ inline const char* GetWebRemoteHtml() {
 </head>
 <body>
 
+  <!-- Video Wallpaper Animado (Red & Blue Waves) -->
+  <video id="bgVideo" class="bg-video" autoplay loop muted playsinline poster="/icon.jpg">
+    <source src="/wallpaper.mp4" type="video/mp4">
+  </video>
+  <div class="bg-overlay"></div>
+
   <div class="container">
     <header>
       <div class="logo-box">
@@ -632,6 +663,20 @@ inline const char* GetWebRemoteHtml() {
           .catch(() => {});
       }
     }, 1500);
+
+    // Autoplay resiliente para mobile e desktop
+    const bgVid = document.getElementById('bgVideo');
+    if (bgVid) {
+      bgVid.play().catch(() => {
+        const resumePlay = () => {
+          bgVid.play();
+          window.removeEventListener('click', resumePlay);
+          window.removeEventListener('touchstart', resumePlay);
+        };
+        window.addEventListener('click', resumePlay, { once: true });
+        window.addEventListener('touchstart', resumePlay, { once: true });
+      });
+    }
 
     connectWs();
   </script>
