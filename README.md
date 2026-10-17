@@ -230,3 +230,12 @@ make -j$(nproc)
 2. Inicie o console em modo CFW (Atmosphère).
 3. Abra o Homebrew Menu em **modo de aplicativo** (segure o botão `R` ao abrir qualquer jogo instalado).
 4. Selecione o **SwitchCast** e aproveite!
+
+---
+
+## 📄 Licença
+
+Este projeto é distribuído sob os termos da licença **MIT**. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+Copyright (c) 2026 **Aleff959**.
+
