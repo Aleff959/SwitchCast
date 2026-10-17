@@ -8,17 +8,19 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 Set-Location $repoRoot
 
-Write-Host "Adicionando arquivos..." -ForegroundColor Cyan
-git add .
+$gitCmd = if (Test-Path "C:\Program Files\Git\cmd\git.exe") { "C:\Program Files\Git\cmd\git.exe" } else { "git" }
 
-$status = git status --porcelain
+Write-Host "Adicionando arquivos..." -ForegroundColor Cyan
+& $gitCmd add .
+
+$status = & $gitCmd status --porcelain
 if (-not $status) {
     Write-Host "Nenhuma alteracao para commitar." -ForegroundColor Yellow
-    exit 0
+} else {
+    Write-Host "Criando commit: $Message" -ForegroundColor Cyan
+    & $gitCmd commit -m $Message
 }
 
-Write-Host "Criando commit: $Message" -ForegroundColor Cyan
-git commit -m $Message
-
 Write-Host "Enviando para o GitHub (origin main)..." -ForegroundColor Green
-git push origin main
+& $gitCmd push -u origin main
+
