@@ -385,7 +385,7 @@ inline const char* GetWebRemoteHtml() {
         <img src="/icon.jpg" alt="SwitchCast" style="width:48px; height:48px; border-radius:12px; box-shadow: -4px 0 15px var(--cyan-glow), 4px 0 15px var(--red-glow); object-fit: cover;">
         <div>
           <div class="brand-title"><span style="color:var(--cyan);">SWITCH</span><span style="color:var(--red);">CAST</span></div>
-          <div class="brand-sub">v1.2.0 &bull; POR ALEFF959</div>
+          <div class="brand-sub">v1.4.0 &bull; POR ALEFF959</div>
         </div>
       </div>
       <div id="connectionStatus" class="status-badge">

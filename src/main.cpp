@@ -9,6 +9,8 @@
 #include "ui/UIEngine.hpp"
 #include "utils/Log.hpp"
 #include "utils/Platform.hpp"
+#include "updater/OtaUpdater.hpp"
+#include "updater/ModuleManager.hpp"
 
 namespace {
 
@@ -63,8 +65,11 @@ bool InitSockets() {
 
 }  // namespace
 
-int main(int, char**) {
-    // 1. Serviços do Horizon OS
+int main(int argc, char* argv[]) {
+    // 0. Captura o caminho exato do .nro passado pelo hbmenu
+    SwitchCast::Updater::OtaUpdater::Instance().InitFromMainArgs(argc, argv);
+
+    // 1. Servicos do Horizon OS
     const bool romfsOk = R_SUCCEEDED(romfsInit());
     nifmInitialize(NifmServiceType_User);  // IP atual do Wi-Fi
     const bool socketsOk = InitSockets();  // BSD sockets (civetweb, SSDP, rede do mpv)
@@ -74,8 +79,17 @@ int main(int, char**) {
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
     padInitializeDefault(&pad);
-    // O áudio é aberto pelo próprio mpv (ao=hos / audren): não inicializar audren aqui
-    // evita dois donos para o mesmo serviço.
+
+    // 2. BootGuard Anti-Brick: verifica se segurou L + R ou se o boot anterior falhou
+    padUpdate(&pad);
+    const u64 initialButtons = padGetButtonsDown(&pad) | padGetButtons(&pad);
+    const bool forceRollback = (initialButtons & HidNpadButton_L) && (initialButtons & HidNpadButton_R);
+    if (!SwitchCast::Updater::OtaUpdater::Instance().VerifyBootIntegrity(forceRollback)) {
+        return 0; // Rollback acionado e auto-restart agendado
+    }
+
+    // Carrega módulos dinâmicos instalados
+    SwitchCast::Updater::ModuleManager::Instance().LoadInstalledModules();
 
     // 3. Impede o sleep automático enquanto o app roda
     appletSetMediaPlaybackState(true);
@@ -89,14 +103,22 @@ int main(int, char**) {
     const bool uiOk = playerOk && ui->Initialize();
 
     if (uiOk) {
+        // Marca boot como bem-sucedido (limpa a flag pending do BootGuard)
+        SwitchCast::Updater::OtaUpdater::Instance().MarkBootSuccessful();
+
         player->StartWallpaperLoop();
         appletHook(&g_appletHookCookie, OnAppletHook, ui.get());
 
         // 5. Servidor de rede (threads próprias, núcleo 1)
-        if (socketsOk) SwitchCast::ServerBridge::Instance().Start(player, kHttpPort, kWsPort);
+        if (socketsOk) {
+            SwitchCast::ServerBridge::Instance().Start(player, kHttpPort, kWsPort);
+            SwitchCast::Updater::OtaUpdater::Instance().StartBackgroundChecker();
+        }
 
         // 6. Loop principal: entrada, comandos de rede, OSD e render (núcleo 0)
         while (appletMainLoop()) {
+            if (SwitchCast::Updater::OtaUpdater::Instance().IsExitRequested()) break;
+
             padUpdate(&pad);
             const u64 kDown = padGetButtonsDown(&pad);
             if (kDown & HidNpadButton_Plus) break;  // + encerra com segurança
@@ -108,15 +130,31 @@ int main(int, char**) {
         appletUnhook(&g_appletHookCookie);
     }
 
-    // 7. Desligamento ordenado: rede -> render context (UI) -> mpv.
-    //    Destruir o mpv antes do render context causa travamento no Horizon.
+    // 7. Desligamento ordenado: para threads secundárias antes de manipular arquivos
+    SwitchCast::Updater::OtaUpdater::Instance().StopBackgroundChecker();
+    SwitchCast::Updater::OtaUpdater::Instance().WaitForInstallThread();
     SwitchCast::ServerBridge::Instance().Stop();
     ui->Shutdown();
     player->Shutdown();
 
+    // 8. Se uma reinicialização de atualização OTA foi solicitada,
+    // substitui o .nro e agenda o reload EXCLUSIVAMENTE na Main Thread:
+    if (SwitchCast::Updater::OtaUpdater::Instance().IsRestartPending()) {
+        if (romfsOk) romfsExit();
+        SwitchCast::Updater::OtaUpdater::Instance().ApplyUpdateAndScheduleRestart();
+    } else {
+        if (romfsOk) romfsExit();
+    }
+
     appletSetMediaPlaybackState(false);
     if (socketsOk) socketExit();
     nifmExit();
-    if (romfsOk) romfsExit();
-    return uiOk ? 0 : 1;
+
+    #ifdef __SWITCH__
+    // Drenagem de 500ms para liberação total de portas/sockets no bsd:u e sysmodules do CNX
+    svcSleepThread(500'000'000ULL);
+    #endif
+
+    // Retorna 0 para que o nx-hbloader leia envSetNextLoad e reinicie o novo .nro automaticamente
+    return 0;
 }

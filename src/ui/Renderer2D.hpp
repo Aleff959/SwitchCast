@@ -48,7 +48,10 @@ public:
     void DrawRect(float x, float y, float w, float h, Color color);
     void DrawRoundedRect(float x, float y, float w, float h, float radius, Color color);
     void DrawRectOutline(float x, float y, float w, float h, float thickness, Color color);
+    void DrawRoundedRectOutline(float x, float y, float w, float h, float radius, float thickness, Color color);
     void DrawCircle(float cx, float cy, float radius, Color color);
+    void DrawPill(float x, float y, float w, float h, Color color);
+    void DrawPillOutline(float x, float y, float w, float h, float thickness, Color color);
     void DrawProgressBar(float x, float y, float w, float h, float progress, Color bgColor, Color fillProgressColor);
 
     // Renderização de texto (FreeType com fonte nativa do Switch ou fallback de bitmap)

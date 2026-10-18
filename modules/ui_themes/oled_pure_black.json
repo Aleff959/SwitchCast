@@ -1,0 +1,13 @@
+{
+  "theme_id": "oled_pure_black",
+  "name": "OLED Pure Black & Neon",
+  "version": "1.0.0",
+  "colors": {
+    "background": "#000000",
+    "card_bg": "#0B1118",
+    "primary_cyan": "#00E5FF",
+    "accent_red": "#FF2A55",
+    "text_main": "#FFFFFF",
+    "text_muted": "#8C9FB5"
+  }
+}

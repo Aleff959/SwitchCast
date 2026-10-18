@@ -3,131 +3,136 @@
   <br>
   <h1 align="center">SwitchCast</h1>
   <p align="center">
-    <b>Receptor de mídia e streaming de alto desempenho para o Nintendo Switch</b><br>
-    <i>Versão 1.2.0 &bull; Desenvolvido por <b>Aleff959</b></i>
+    <b>Receptor de mídia e streaming de alto desempenho com arquitetura modular para o Nintendo Switch</b><br>
+    <i>Versão 2.0.0 &bull; Desenvolvido por <b>Aleff959</b></i>
   </p>
   <p align="center">
-    <img src="https://img.shields.io/badge/Versão-1.2.0-FF2A55?style=flat-square" alt="Version">
-    <img src="https://img.shields.io/badge/C%2B%2B-20-00E5FF?style=flat-square" alt="C++20">
-    <img src="https://img.shields.io/badge/Plataforma-Nintendo_Switch_OLED-10B981?style=flat-square" alt="Nintendo Switch OLED">
+    <img src="https://img.shields.io/badge/Versão-2.0.0-FF2A55?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/Arquitetura-Modular_Two--Stage-00E5FF?style=flat-square" alt="Modular Architecture">
+    <img src="https://img.shields.io/badge/C%2B%2B-20-7C4DFF?style=flat-square" alt="C++20">
+    <img src="https://img.shields.io/badge/Renderizador-OpenGL_4.3_Core-10B981?style=flat-square" alt="OpenGL 4.3">
+    <img src="https://img.shields.io/badge/Plataforma-Nintendo_Switch_OLED-FF9100?style=flat-square" alt="Nintendo Switch OLED">
     <img src="https://img.shields.io/badge/Licença-MIT-blue?style=flat-square" alt="License">
   </p>
 </p>
 
 ---
 
-**SwitchCast** é um homebrew de alto desempenho para o **Nintendo Switch (com foco nas particularidades do painel OLED)**, desenvolvido em **C++20**. Ele transforma o console em um receptor de mídia inteligente completo, com suporte a **UPnP/DLNA**, **Central Web de Controle Remoto**, decodificação por hardware **Tegra X1 NVDEC** (`nvtegra`) e renderização nativa em **OpenGL 4.3 / EGL**.
+**SwitchCast v2.0.0** é uma revolução completa no ecossistema homebrew para o **Nintendo Switch**. Desenvolvido em **C++20**, o projeto evoluiu de um receptor de mídia tradicional para uma **plataforma modular com inicialização em dois estágios (Launcher + Core)**, permitindo atualizações Over-The-Air (OTA) seguras e sem bloqueio de arquivos FAT32 (Zero-Lock), motor de renderização 2D próprio acelerado por shaders OpenGL 4.3, decodificação por hardware **Tegra X1 NVDEC** (`nvtegra`) e uma moderna central de controle remoto via Web.
 
 ---
 
-## ✨ Destaques e Funcionalidades
+## ✨ Destaques da Versão 2.0.0
 
-- 📱 **Central Web de Controle Remoto Integrada (`http://<ip-do-switch>:8080`)**:
-  - Abra o navegador no PC ou celular para controlar reprodução, volume, arrastar a barra de progresso (seek) em tempo real e transmitir links diretos de vídeo/áudio (`.mp4`, `.mkv`, `.m3u8`, HLS, streams HTTP).
-- 🎮 **Identidade Visual Joy-Con Duo (Ciano Neon `#00E5FF` + Vermelho Neon `#FF2A55`)**:
-  - Interface desenvolvida para o painel OLED com preto absoluto (`#000000`) para desligamento físico de subpixels, economizando bateria e prevenindo burn-in.
-- ⚡ **Renderização 2D Nativa em OpenGL 4.3 + FreeType 2**:
-  - As fontes padrão do Nintendo Switch são lidas **diretamente da memória RAM** (`plGetSharedFontByType`), garantindo boot instantâneo em menos de 10ms sem desgastar o cartão microSD.
-- 🚀 **Aceleração por Hardware Tegra X1 (`nvtegra`)**:
-  - Reprodução suave a 60 FPS com baixo consumo de CPU via `libmpv` e pipeline de áudio nativo Horizon (`ao=hos` / `audren`).
-- 🔄 **Suporte Duplo: Modo Álbum (Applet) & Title Takeover (Application)**:
-  - Heap de memória adaptativo: funciona pelo Álbum com 16 MB de cache e libera 128 MB de buffer quando aberto via Title Takeover (segurando R ao abrir um jogo).
-- 📡 **Compatibilidade Universal com Apps Móveis**:
-  - Totalmente compatível com **BubbleUPnP**, **Web Video Caster**, **VLC Media Player**, **TV Assist** e comandos REST/WebSocket.
+- 🚀 **Arquitetura Modular em 2 Estágios (Launcher + Core)**:
+  - **`SwitchCast.nro` (Launcher / App Pai - ~7.4 MB)**: Atua como ponto de entrada oficial no Homebrew Menu. No dia a dia, inicializa em menos de **2 milissegundos** e transfere a execução via `envSetNextLoad` para o módulo Core de forma totalmente invisível.
+  - **`SwitchCastCore.nro` (Módulo Core - ~39 MB)**: Contém o motor multimídia completo, decodificadores Tegra, servidores de rede e interface visual.
+- 🔄 **Atualizações OTA Zero-Lock (Livres de Bloqueio FAT32)**:
+  - O Horizon OS mantém arquivos `.nro` em execução travados pelo driver do sistema de arquivos. No SwitchCast v2.0.0, as atualizações são baixadas em segundo plano pelo Core e instaladas de forma atômica pelo Launcher, que assume o display com uma barra de progresso visual, substitui os binários, realiza o flush seguro no microSD (`fsdevCommitDevice`) e recarrega o app sem exigir reinicialização do console.
+- 🛡️ **Proteção Anti-Brick BootGuard**:
+  - Mecanismo de integridade com backup automático (`SwitchCastCore.nro.bak`) e detecção de falhas. Se uma versão corrompida for instalada ou se o usuário segurar o botão de cancelamento, o Launcher restaura a versão funcional imediatamente.
+- 🎨 **Renderizador 2D Nativo OpenGL 4.3 com Shaders GLSL**:
+  - Motor gráfico desacoplado com retângulos de cantos arredondados procedimentais, anti-aliasing via pixel shader, sombras gaussianas dinâmicas e tipografia FreeType 2 calibrada com extração de fontes de sistema direto da memória RAM (`plGetSharedFontByType`).
+- 📺 **Design Otimizado para Telas OLED & Dynamic Refresh**:
+  - Fundo com preto absoluto (`#000000`) para desligamento físico dos subpixels OLED, economizando bateria e protegendo o painel.
+  - Taxa de quadros dinâmica: opera a 15 FPS em repouso no Dashboard e sincroniza a 60 FPS automáticos durante a reprodução de vídeo.
+- ⚡ **Aceleração por Hardware Tegra X1 (`nvtegra`)**:
+  - Decodificação suave de streams H.264 e HEVC/H.265 (inclusive 10-bit) a 60 FPS via `libmpv` e pipeline de áudio nativo Horizon (`ao=hos` / `audren`).
+- 📱 **Central Web de Controle Remoto (`http://<ip-do-switch>:5000`)**:
+  - Acesse pelo celular ou computador para controlar reprodução, volume, busca (seek), envio direto de links `.mp4`, `.mkv`, `.m3u8` (HLS) e acompanhamento de status do console.
+- 📡 **Compatibilidade Universal UPnP / DLNA**:
+  - Totalmente compatível com **BubbleUPnP**, **Web Video Caster**, **VLC Media Player**, **TV Assist** e comandos via API REST / WebSocket.
 
 ---
 
-## 1. Visão Geral da Arquitetura
+## 1. Arquitetura Modular e Fluxo de Execução
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        NINTENDO SWITCH OLED                            │
-│                                                                        │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                    Horizon OS Native Services                    │  │
-│  │    [nifm:u]          [bsd:u]          [lbl]         [hid / pad]  │  │
-│  │     (Rede)         (Sockets)        (Brilho)        (Controles)  │  │
-│  └────────┬─────────────────┬──────────────┬────────────────┬───────┘  │
-│           │                 │              │                │          │
-│  ┌────────▼─────────────────▼──────────────▼────────────────▼───────┐  │
-│  │                   SwitchCast Core (C++20)                        │  │
-│  │                                                                  │  │
-│  │   ┌───────────────────┐               ┌───────────────────────┐  │  │
-│  │   │  Network Engine   │               │   UI & Display Engine │  │  │
-│  │   │ - CivetWeb HTTP   │ CommandQueue  │ - OpenGL 4.3 / EGL    │  │  │
-│  │   │ - Web Remote SPA  │ ────────────> │ - Renderer2D Native   │  │  │
-│  │   │ - WebSocket (/ws) │ (ThreadSafe)  │ - FreeType Memory Font│  │  │
-│  │   │ - SSDP (UDP 1900) │               │ - OLED Burn-in Guard  │  │  │
-│  │   └─────────┬─────────┘               └───────────┬───────────┘  │  │
-│  │             │                                     │              │  │
-│  │             │ Media URL / Headers                 │ FBO Swap     │  │
-│  │             ▼                                     ▼              │  │
-│  │   ┌───────────────────────────────────────────────────────────┐  │  │
-│  │   │             Playback Engine (libmpv + Tegra X1)           │  │  │
-│  │   │  - Hardware Decoder: Tegra NVDEC via nvtegra              │  │  │
-│  │   │  - Audio: Horizon audren nativo (ao=hos)                  │  │  │
-│  │   │  - Cache adaptativo: 16 MB (Álbum) / 128 MB (Takeover)    │  │  │
-│  │   └───────────────────────────────────────────────────────────┘  │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────┘
+                    ┌───────────────────────────────────────────────┐
+                    │          Homebrew Menu (Atmosphère)           │
+                    └───────────────────────┬───────────────────────┘
+                                            │ Executa
+                                            ▼
+                    ┌───────────────────────────────────────────────┐
+                    │          SwitchCast.nro (Launcher)            │
+                    │         sdmc:/switch/SwitchCast/              │
+                    └───────┬───────────────────────────────┬───────┘
+                            │                               │
+        [Se houver update pendente]            [Inicialização normal (dia a dia)]
+                            │                               │ (~2ms)
+                            ▼                               ▼
+      ┌─────────────────────────────────┐       ┌───────────────────────┐
+      │     Interface EGL / OpenGL      │       │     envSetNextLoad    │
+      │   - Barra de progresso visual   │       └───────────┬───────────┘
+      │   - Substituição livre de travas│                   │
+      │   - Flush SD (fsdevCommitDevice)│                   ▼
+      │   - Rollback automático de erro │       ┌───────────────────────┐
+      └─────────────────┬───────────────┘       │   SwitchCastCore.nro  │
+                        │                       │  (Módulo Principal)   │
+                        └──────────────────────>│   sdmc:.../modules/   │
+                                                └───────────────────────┘
 ```
+
+### Por que a Arquitetura em Dois Estágios?
+No Horizon OS, qualquer binário aberto pelo Homebrew Menu permanece com descritores de arquivo abertos em nível de driver no FAT32. Tentar sobrescrever o próprio `.nro` em execução gera falhas de escrita ou corrupção de sistema de arquivos. 
+
+A arquitetura **Two-Stage** do SwitchCast v2.0.0 resolve isso de forma elegante:
+1. O executável principal que o sistema executa no dia a dia é o **Core** (`modules/SwitchCastCore.nro`).
+2. Quando uma nova versão é recebida (via OTA na internet ou push local via script), o arquivo é salvo em um arquivo temporário (`modules/update.nro`).
+3. O Core se despede e transfere o controle de volta ao **Launcher** (`SwitchCast.nro`).
+4. Como o Core **não** está mais em execução, seus arquivos estão completamente destravados.
+5. O Launcher substitui o binário, faz backup da versão anterior, chama `fsdevCommitDevice("sdmc")` para garantir a persistência física no cartão SD e inicia o novo Core imediatamente.
 
 ---
 
-## 2. Decisões de Engenharia e Ajustes Técnicos no Horizon OS
+## 2. Decisões de Engenharia e Tecnologias
 
 1. **Aceleração de Hardware Tegra X1 (`nvtegra`)**:
-   - No build de FFmpeg/libmpv do devkitPro para o Switch, o decodificador por hardware do Tegra X1 está registrado com o identificador de driver `nvtegra` (com fallback seguro para `auto-safe`).
-2. **Pipeline de Áudio (`ao=hos`)**:
-   - O áudio é gerenciado pelo backend nativo do mpv `ao=hos` (Horizon Audio Renderer - `audren`), evitando conflitos de inicialização concorrente.
-3. **Pilha de Sockets BSD**:
-   - Configurada de forma adaptativa para operar sem estourar sessões tanto no modo LibraryApplet (4 sessões) quanto em Application (6 sessões com buffer de até 1 MB).
-4. **Renderização 2D Própria e Desacoplada**:
-   - Como o `mpv_render_context_render` não renderiza legendas/OSD quando não há arquivo em reprodução (`idle=yes`), o SwitchCast possui o `Renderer2D`, um renderizador acelerado via shaders OpenGL 4.3 que desenha a interface do dashboard diretamente no framebuffer.
-5. **Otimizações para Painel OLED**:
-   - **Zero-Pixel Powering**: O fundo e barras utilizam `#000000` absoluto, desligando fisicamente os subpixels OLED.
-   - **Dynamic Swap Interval**: Em repouso (dashboard), o `eglSwapInterval` é ajustado para 15 FPS, economizando bateria. Em reprodução de vídeo, sincroniza a 60 Hz.
-   - **Burn-In Guard**: Após inatividade, o brilho decai para 35% e os elementos sofrem micro-deslocamentos sutis a cada 20s.
+   - Integração direta com a GPU do Tegra X1 através de decodificadores dedicados do chip, garantindo baixo aquecimento, baixo consumo de energia e reprodução sem perda de quadros.
+2. **Horizon Native Audio (`ao=hos`)**:
+   - Saída de som gerenciada pelo Horizon Audio Renderer (`audren`), permitindo saída estéreo limpa sem atrasos ou distorções.
+3. **Métricas de Fonte e Tipografia FreeType 2**:
+   - O motor de renderização `Renderer2D` calcula dinamicamente o avanço horizontal (`advance`) de cada glifo, garantindo suporte completo a caracteres UTF-8, acentuação e alinhamento tipográfico perfeito sem sobreposição de textos.
+4. **Layout Responsivo Adaptativo**:
+   - O dashboard e os menus detectam em tempo real o modo do console:
+     - **Handheld (720p)**: 1280x720, elementos dimensionados com espaçamentos otimizados para leitura em tela de 7 polegadas.
+     - **Docked (1080p)**: 1920x1080, redimensionamento automático de cards e fontes com escala nítida.
 
 ---
 
 ## 3. Protocolos de Rede e API
 
-O SwitchCast expõe três interfaces de controle simultâneas na porta HTTP **8080** e WebSocket **8081**:
+O SwitchCast v2.0.0 opera com servidores leves embarcados baseados no CivetWeb:
 
 ### 3.1. UPnP / DLNA (MediaRenderer:1)
-- Suporta controladores UPnP como **BubbleUPnP**, **VLC Cast**, smart TVs e apps móveis.
-- **SSDP**: Responde a buscas `M-SEARCH` (`ssdp:all`, `upnp:rootdevice`, etc.) e emite `NOTIFY ssdp:alive` e `ssdp:byebye`.
-- **Rotas**:
-  - `GET /upnp/description.xml`: Descritor do dispositivo com UUID único e persistente em SD.
-  - `GET /upnp/scpd/AVTransport.xml`, `RenderingControl.xml`, `ConnectionManager.xml`: Especificações de serviço.
-  - `POST /upnp/control/AVTransport`: Ações `SetAVTransportURI`, `Play`, `Pause`, `Stop`, `Seek`, `GetTransportInfo`, `GetPositionInfo`, `GetMediaInfo`.
-  - `POST /upnp/control/RenderingControl`: `GetVolume`, `SetVolume`, `GetMute`, `SetMute`.
+- **SSDP**: Responde ativamente a buscas `M-SEARCH` (`ssdp:all`, `upnp:rootdevice`, `urn:schemas-upnp-org:device:MediaRenderer:1`) e emite anúncios periódicos de presença na rede.
+- **Serviços Suportados**: `AVTransport:1`, `RenderingControl:1` e `ConnectionManager:1`.
+- Compatível nativamente com transmissões de celulares (Android/iOS) e PCs via BubbleUPnP, VLC e navegadores.
 
-### 3.2. REST API (`/api/v1`)
-Permite integração direta com aplicações web, scripts ou automações:
+### 3.2. Central Web Remote (`http://<ip-do-switch>:5000`)
+Interface web responsiva com identidade visual moderna, permitindo:
+- Play, Pause, Stop, Seek interativo e controle de volume (0 a 100%).
+- Envio instantâneo de links diretos de mídia.
+- Seleção de faixas de áudio e legendas embutidas ou externas.
+- Telemetria de bateria, temperatura e status de conexão.
 
-| Método | Endpoint | Payload / Descrição |
+### 3.3. REST API (`/api/v1`)
+
+| Método | Endpoint | Descrição |
 |---|---|---|
-| `GET` | `/api/v1/info` | Retorna metadados do Switch (UUID, IP, portas, versão). |
-| `GET` | `/api/v1/status` | Retorna estado atual (`idle`, `playing`, `paused`, posição, duração, volume). |
-| `POST` | `/api/v1/play` | `{"url": "https://...", "title": "Vídeo", "headers": {"Referer": "..."}, "subtitles": ["https://..."]}` |
-| `POST` | `/api/v1/pause` | Pausa a reprodução. |
-| `POST` | `/api/v1/play` | Retoma a reprodução (quando sem campo `url`). |
-| `POST` | `/api/v1/stop` | Para a reprodução e retorna ao estado de espera. |
-| `POST` | `/api/v1/seek` | `{"positionMs": 45000}` ou `{"offsetMs": 10000}`. |
-| `POST` | `/api/v1/volume` | `{"level": 80}` (0 a 100). |
-| `POST` | `/api/v1/mute` | `{"mute": true}`. |
-| `POST` | `/api/v1/subtitle`| `{"url": "https://..."}` (adiciona legenda externa). |
-
-### 3.3. WebSocket (`/ws`)
-Conexão bidirecional em tempo real para controle e telemetria:
-- Emite eventos `{"event": "status", ...}` a cada segundo ou sob alteração de estado.
-- Aceita comandos em JSON: `{"cmd": "play", "url": "..."}`, `{"cmd": "pause"}`, `{"cmd": "volume", "level": 70}`, etc.
+| `GET` | `/api/v1/info` | Retorna metadados do console (UUID, IP, versão, portas). |
+| `GET` | `/api/v1/status` | Retorna estado de reprodução, posição, duração, volume e metadados da mídia. |
+| `POST` | `/api/v1/play` | Inicia ou retoma a reprodução (aceita JSON com `url`, `title`, `headers`, `subtitles`). |
+| `POST` | `/api/v1/pause` | Pausa a mídia atual. |
+| `POST` | `/api/v1/stop` | Interrompe a reprodução e retorna ao Dashboard OLED. |
+| `POST` | `/api/v1/seek` | Ajusta posição temporal (`{"positionMs": 30000}`). |
+| `POST` | `/api/v1/volume` | Ajusta o nível de áudio (`{"level": 75}`). |
+| `POST` | `/api/v1/system/ota-update` | Endpoint para push de atualização remota sem fio via LAN. |
+| `POST` | `/api/v1/system/rollback` | Reverte imediatamente para a versão funcional anterior (`.bak`). |
 
 ---
 
-## 4. Mapeamento de Controles e Gestos
+## 4. Mapeamento de Controles e Gestos Touch
 
 ```
 [ZL / L]                                                               [ZR / R]
@@ -143,56 +148,74 @@ Volume -                                                               Volume +
 │  [-] : Mudo / Desmudo                                      (+) Sair        │
 │                                                                            │
 │                           TELA OLED (Touch Gestures)                       │
-│                   Toque Rápido: Alterna Barra de Controle                  │
-│                   Deslizar Esquerda (Vertical): Brilho da Tela             │
-│                   Deslizar Direita (Vertical): Volume do Áudio             │
-│                   Arrastar Horizontal (Meio): Seek Interativo              │
+│                   Toque Rápido: Exibe/Oculta Barra de Controle             │
+│                   Deslizar Esquerda (Vertical): Ajuste de Brilho           │
+│                   Deslizar Direita (Vertical): Ajuste de Volume Áudio      │
+│                   Arrastar Horizontal (Centro): Seek na Linha do Tempo     │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 5. Estrutura do Código
+## 5. Estrutura do Repositório
 
 ```
 SwitchCast/
-├── Makefile                     # Script de build para devkitPro / switch_rules
-├── SwitchCast.nro               # Executável final compilado para Horizon OS
-├── scripts/
-│   ├── build.sh                 # Script bash para compilação nativa no MSYS2/Linux
-│   └── build_win.ps1            # Wrapper PowerShell (compila fora do OneDrive e copia o .nro)
+├── Makefile                     # Build do Módulo Core (SwitchCastCore.nro)
+├── SwitchCast.nro               # Binário oficial do Launcher (App Pai)
+├── SwitchCastCore.nro           # Binário compilado do Módulo Core v2.0.0
+├── icon.jpg                     # Ícone oficial do app em alta resolução
+├── update_manifest.json         # Manifesto oficial de distribuição de updates OTA
+├── launcher/
+│   ├── Makefile                 # Build do Launcher (SwitchCast.nro)
+│   └── main.cpp                 # Motor de inicialização rápida e instalador gráfico EGL
+├── include/
+│   └── updater/                 # Headers do sistema de atualização e BootGuard
+│       ├── ModuleManager.hpp
+│       ├── OtaFileEmunandFix.hpp
+│       └── OtaUpdater.hpp
 ├── src/
-│   ├── main.cpp                 # Entry point, ciclo de vida do Horizon, applet hooks
-│   ├── common/
-│   │   ├── Command.hpp          # Fila thread-safe de comandos de rede
-│   │   └── Types.hpp            # Estruturas de dados, snapshots e enums
-│   ├── network/
-│   │   ├── ServerBridge.hpp/.cpp # Servidor CivetWeb (HTTP, REST, WS)
-│   │   ├── SsdpServer.hpp/.cpp   # Descoberta UDP multicast UPnP
-│   │   ├── Upnp.hpp/.cpp         # Templates XML e serialização SOAP
-│   │   └── UpnpService.hpp/.cpp  # Handlers de ações AVTransport / RenderingControl
-│   ├── player/
-│   │   └── MpvPlayer.hpp/.cpp   # Integração libmpv, decodificação Tegra, eventos
-│   ├── ui/
-│   │   ├── OledBurnInGuard.hpp/.cpp # Protetor contra retenção de imagem OLED
-│   │   ├── Osd.hpp/.cpp         # Gerador de layout OSD em scripts ASS
-│   │   └── UIEngine.hpp/.cpp    # Contexto EGL/OpenGL, renderização, touch e input
-│   └── utils/
-│       ├── Log.hpp              # Logs para debug via nxlink
-│       ├── Platform.hpp/.cpp    # Extração de fontes compartilhadas, IP e afinidade de núcleos
-│       ├── PosixStubs.c         # Stubs POSIX para o newlib do libnx
-│       └── Text.hpp/.cpp        # Utilitários de texto, formatação de tempo e XML
+│   ├── main.cpp                 # Entry point do Core, loop de eventos Horizon
+│   ├── common/                  # Definições de tipos, comandos thread-safe
+│   ├── network/                 # CivetWeb, UPnP, SSDP e Web Remote
+│   ├── player/                  # Integração libmpv e aceleração Tegra NVDEC
+│   ├── ui/                      # Renderer2D OpenGL 4.3, UIEngine, OledBurnInGuard
+│   ├── updater/                 # Implementação do OtaUpdater e ModuleManager
+│   └── utils/                   # Log, Platform, PosixStubs, manipulação de texto
+├── modules/                     # Estrutura para módulos extensíveis e plugins
+├── tools/
+│   ├── deploy_ota.ps1           # Script PowerShell para deploy e teste remoto de OTA
+│   └── upload_ftp.py            # Utilitário de envio rápido via FTP para o Switch
 └── third_party/
-    ├── civetweb/                # Servidor HTTP/WS ultraleve em C
-    └── nlohmann/json.hpp        # Parser JSON para REST e WebSocket
+    ├── civetweb/                # Servidor HTTP/WebSocket ultraleve em C
+    └── nlohmann/json.hpp        # Manipulador de JSON moderno para C++
 ```
 
 ---
 
-## 6. Compilação e Instalação
+## 6. Instalação no Nintendo Switch
+
+### Método Recomendado (Estrutura Modular v2.0.0)
+
+1. Conecte o cartão microSD do Switch ao computador ou utilize um servidor FTP no console (como o *sys-ftpd-ovl*).
+2. Certifique-se de criar a seguinte estrutura de pastas:
+   ```
+   sdmc:/
+   └── switch/
+       └── SwitchCast/
+           ├── SwitchCast.nro              <-- Launcher (App Pai)
+           └── modules/
+               └── SwitchCastCore.nro      <-- Módulo Core principal
+   ```
+3. Abra o Homebrew Menu em modo **Title Takeover** (segure o botão `R` ao abrir qualquer jogo oficial) para garantir acesso total à memória RAM e à aceleração gráfica da GPU.
+4. Selecione o **SwitchCast**! A partir de agora, qualquer atualização futura poderá ser feita **diretamente pela internet (OTA)** sem precisar remover o cartão SD.
+
+---
+
+## 7. Compilação a partir do Código-Fonte
 
 ### Pré-requisitos
-Ter o [devkitPro](https://devkitpro.org/) instalado com a toolchain do Nintendo Switch (`switch-dev`):
+Instale o ambiente [devkitPro](https://devkitpro.org/) com a toolchain do Nintendo Switch (`switch-dev`):
 ```bash
 sudo dkp-pacman -S \
     switch-dev \
@@ -207,35 +230,30 @@ sudo dkp-pacman -S \
     switch-zlib
 ```
 
-### Compilar no Windows (PowerShell)
-O repositório inclui um script que compila fora de pastas sincronizadas pelo OneDrive para evitar travas de I/O em arquivos de dependência `.d`:
+### 1. Compilar o Launcher (App Pai)
+```bash
+cd launcher
+make -j$(nproc)
+```
+Gera `launcher/SwitchCast.nro`.
+
+### 2. Compilar o Módulo Core
+```bash
+cd ..
+make -j$(nproc)
+```
+Gera `SwitchCastCore.nro`.
+
+### Compilação no Windows (PowerShell)
+Você pode utilizar o script wrapper que compila fora de pastas do OneDrive para máxima velocidade:
 ```powershell
 .\scripts\build_win.ps1
 ```
-Para uma compilação limpa (clean):
-```powershell
-.\scripts\build_win.ps1 -Clean
-```
-
-### Compilar no Linux / macOS / MSYS2
-```bash
-make -j$(nproc)
-```
-
-### Instalação no Console
-1. Copie o executável `SwitchCast.nro` para o cartão SD do Nintendo Switch em:
-   ```
-   sdmc:/switch/SwitchCast/SwitchCast.nro
-   ```
-2. Inicie o console em modo CFW (Atmosphère).
-3. Abra o Homebrew Menu em **modo de aplicativo** (segure o botão `R` ao abrir qualquer jogo instalado).
-4. Selecione o **SwitchCast** e aproveite!
 
 ---
 
 ## 📄 Licença
 
-Este projeto é distribuído sob os termos da licença **MIT**. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+Este projeto é distribuído sob os termos da licença **MIT**. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
 
-Copyright (c) 2026 **Aleff959**.
-
+Desenvolvido por **Aleff959** &copy; 2026.

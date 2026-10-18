@@ -317,14 +317,66 @@ void Renderer2D::DrawRectOutline(float x, float y, float w, float h, float thick
     DrawRect(x + w - thickness, y + thickness, thickness, h - 2 * thickness, color); // right
 }
 
+void Renderer2D::DrawRoundedRectOutline(float x, float y, float w, float h, float r, float thickness, Color color) {
+    r = std::min(r, std::min(w / 2.0f, h / 2.0f));
+    float t = std::min(thickness, r);
+    if (t <= 0.0f) return;
+
+    // 4 bordas retas (entre os cantos arredondados)
+    DrawRect(x + r, y, w - 2.0f * r, t, color); // topo
+    DrawRect(x + r, y + h - t, w - 2.0f * r, t, color); // base
+    DrawRect(x, y + r, t, h - 2.0f * r, color); // esquerda
+    DrawRect(x + w - t, y + r, t, h - 2.0f * r, color); // direita
+
+    // 4 cantos em arcos suaves de espessura exata
+    const int segments = 12;
+    auto drawCornerRing = [this, color, t](float cx, float cy, float rOuter, float startAngle) {
+        if (mCurrentTextureMode != 0) {
+            Flush();
+            mCurrentTextureMode = 0;
+        }
+        float rInner = rOuter - t;
+        for (int i = 0; i < segments; ++i) {
+            float a1 = startAngle + (float)i / segments * (M_PI / 2.0f);
+            float a2 = startAngle + (float)(i + 1) / segments * (M_PI / 2.0f);
+
+            float cos1 = std::cos(a1), sin1 = std::sin(a1);
+            float cos2 = std::cos(a2), sin2 = std::sin(a2);
+
+            float outX1 = cx + cos1 * rOuter, outY1 = cy + sin1 * rOuter;
+            float outX2 = cx + cos2 * rOuter, outY2 = cy + sin2 * rOuter;
+            float inX1  = cx + cos1 * rInner, inY1  = cy + sin1 * rInner;
+            float inX2  = cx + cos2 * rInner, inY2  = cy + sin2 * rInner;
+
+            // Triângulo 1: in1, out1, out2
+            mVertices.push_back({inX1, inY1, 0, 0, color.r, color.g, color.b, color.a});
+            mVertices.push_back({outX1, outY1, 0, 0, color.r, color.g, color.b, color.a});
+            mVertices.push_back({outX2, outY2, 0, 0, color.r, color.g, color.b, color.a});
+
+            // Triângulo 2: in1, out2, in2
+            mVertices.push_back({inX1, inY1, 0, 0, color.r, color.g, color.b, color.a});
+            mVertices.push_back({outX2, outY2, 0, 0, color.r, color.g, color.b, color.a});
+            mVertices.push_back({inX2, inY2, 0, 0, color.r, color.g, color.b, color.a});
+        }
+    };
+
+    drawCornerRing(x + r, y + r, r, M_PI);                    // top-left
+    drawCornerRing(x + w - r, y + r, r, 3.0f * M_PI / 2.0f); // top-right
+    drawCornerRing(x + w - r, y + h - r, r, 0.0f);          // bottom-right
+    drawCornerRing(x + r, y + h - r, r, M_PI / 2.0f);       // bottom-left
+}
+
 void Renderer2D::DrawRoundedRect(float x, float y, float w, float h, float r, Color color) {
     r = std::min(r, std::min(w / 2.0f, h / 2.0f));
-    DrawRect(x + r, y, w - 2 * r, h, color);
-    DrawRect(x, y + r, r, h - 2 * r, color);
-    DrawRect(x + w - r, y + r, r, h - 2 * r, color);
+    // 1. Corpo central (cobre largura total entre os cantos e altura total h)
+    DrawRect(x + r, y, w - 2.0f * r, h, color);
+    // 2. Lateral esquerda (apenas entre os cantos superior e inferior)
+    DrawRect(x, y + r, r, h - 2.0f * r, color);
+    // 3. Lateral direita (apenas entre os cantos superior e inferior)
+    DrawRect(x + w - r, y + r, r, h - 2.0f * r, color);
 
-    // 4 cantos arredondados
-    const int segments = 8;
+    // 4 cantos arredondados (arcos preenchidos com alta suavidade)
+    const int segments = 16;
     auto drawCorner = [this, color](float cx, float cy, float rad, float startAngle) {
         if (mCurrentTextureMode != 0) {
             Flush();
@@ -360,11 +412,19 @@ void Renderer2D::DrawCircle(float cx, float cy, float radius, Color color) {
     }
 }
 
+void Renderer2D::DrawPill(float x, float y, float w, float h, Color color) {
+    DrawRoundedRect(x, y, w, h, h * 0.5f, color);
+}
+
+void Renderer2D::DrawPillOutline(float x, float y, float w, float h, float thickness, Color color) {
+    DrawRoundedRectOutline(x, y, w, h, h * 0.5f, thickness, color);
+}
+
 void Renderer2D::DrawProgressBar(float x, float y, float w, float h, float progress, Color bgColor, Color fillProgressColor) {
     progress = std::clamp(progress, 0.0f, 1.0f);
-    DrawRoundedRect(x, y, w, h, h / 2.0f, bgColor);
+    DrawPill(x, y, w, h, bgColor);
     if (progress > 0.001f) {
-        DrawRoundedRect(x, y, std::max(w * progress, h), h, h / 2.0f, fillProgressColor);
+        DrawPill(x, y, std::max(w * progress, h), h, fillProgressColor);
     }
 }
 
@@ -403,7 +463,7 @@ float Renderer2D::MeasureTextWidth(const std::string& text, float size) {
         if (code >= 32 && code < 256 && mGlyphs[code].advance > 0) {
             width += mGlyphs[code].advance * scale;
         } else if (code >= 32) {
-            width += 18.0f * scale;
+            width += 12.0f * scale;
         }
     }
     return width;
@@ -434,6 +494,12 @@ void Renderer2D::DrawText(float x, float y, const std::string& text, float size,
         int code = NextUtf8CodePoint(text, i);
         if (code < 32) continue;
 
+        if (code == 32) {
+            float spAdv = (mGlyphs[32].advance > 0) ? static_cast<float>(mGlyphs[32].advance) : 12.0f;
+            drawX += spAdv * scale;
+            continue;
+        }
+
         if (code < 256 && mGlyphs[code].width > 0 && mGlyphs[code].height > 0) {
             const GlyphInfo& g = mGlyphs[code];
             float x0 = drawX + g.bearingX * scale;
@@ -443,8 +509,10 @@ void Renderer2D::DrawText(float x, float y, const std::string& text, float size,
 
             PushQuad(x0, y0, x1, y1, g.u0, g.v0, g.u1, g.v1, color);
             drawX += g.advance * scale;
+        } else if (code < 256 && mGlyphs[code].advance > 0) {
+            drawX += mGlyphs[code].advance * scale;
         } else {
-            drawX += 18.0f * scale;
+            drawX += 12.0f * scale;
         }
     }
 }

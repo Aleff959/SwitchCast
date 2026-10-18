@@ -14,6 +14,12 @@
 #include "../utils/Log.hpp"
 #include "../utils/Platform.hpp"
 #include "../utils/Text.hpp"
+#include "updater/OtaUpdater.hpp"
+#include "updater/ModuleManager.hpp"
+#include <sys/stat.h>
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
 
 namespace SwitchCast {
 
@@ -31,6 +37,52 @@ std::string ReadBody(mg_connection* conn) {
     return body;
 }
 
+bool StreamBodyToFile(mg_connection* conn, const std::string& destinationPath,
+                      const std::function<void(size_t, size_t)>& onProgress = nullptr) {
+    FILE* fp = std::fopen(destinationPath.c_str(), "wb");
+    if (!fp) return false;
+
+    const char* clHeader = mg_get_header(conn, "Content-Length");
+    size_t totalBytes = clHeader ? static_cast<size_t>(std::strtoull(clHeader, nullptr, 10)) : 0;
+
+    char buf[65536];
+    int n = 0;
+    bool hadError = false;
+    size_t downloaded = 0;
+
+    while ((n = mg_read(conn, buf, sizeof(buf))) > 0) {
+        if (std::fwrite(buf, 1, n, fp) != static_cast<size_t>(n)) {
+            hadError = true;
+            break;
+        }
+        downloaded += n;
+        if (onProgress) {
+            onProgress(downloaded, totalBytes);
+        }
+        // Micro-sleep de 1ms para liberar o barramento SDMMC do Tegra X1
+        // e manter a tela 100% fluida a 60 fps durante o download
+        #ifdef __SWITCH__
+        svcSleepThread(1'000'000);
+        #else
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        #endif
+    }
+    if (n < 0) hadError = true;
+    std::fflush(fp);
+    #ifdef __SWITCH__
+    fsync(fileno(fp));
+    #endif
+    std::fclose(fp);
+    #ifdef __SWITCH__
+    fsdevCommitDevice("sdmc");
+    #endif
+    if (hadError) {
+        std::remove(destinationPath.c_str());
+        return false;
+    }
+    return true;
+}
+
 void SendResponse(mg_connection* conn, int status, const char* contentType, const std::string& body,
                   const std::string& extraHeaders = {}) {
     const char* text = status == 200 ? "OK" : status == 204 ? "No Content" : status == 400 ? "Bad Request"
@@ -39,7 +91,7 @@ void SendResponse(mg_connection* conn, int status, const char* contentType, cons
     mg_printf(conn,
               "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
               "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Content-Type\r\n"
-              "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nServer: SwitchCast/1.2.0\r\n%s\r\n",
+              "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nServer: SwitchCast/2.0.0\r\n%s\r\n",
               status, text, contentType, body.size(), extraHeaders.c_str());
     if (!body.empty()) mg_write(conn, body.data(), body.size());
 }
@@ -137,7 +189,7 @@ bool ServerBridge::Start(std::shared_ptr<MpvPlayer> player, int httpPort, int ws
     const char* options[] = {"listening_ports", ports.c_str(),
                              "num_threads", "8",
                              "enable_keep_alive", "no",
-                             "request_timeout_ms", "15000",
+                             "request_timeout_ms", "180000",
                              "websocket_timeout_ms", "3600000",
                              nullptr};
     mg_callbacks callbacks{};
@@ -287,11 +339,153 @@ int ServerBridge::HandleApi(mg_connection* conn) {
         json info{{"name", mIdentity.friendlyName}, {"author", "Aleff959"},
                   {"description", "Receptor de mídia e streaming de alto desempenho para Nintendo Switch OLED com aceleração NVDEC"},
                   {"uuid", mIdentity.uuid}, {"ip", CurrentIp()},
-                  {"httpPort", mIdentity.httpPort}, {"wsPort", mIdentity.wsPort}, {"version", "1.2.0"}};
+                  {"httpPort", mIdentity.httpPort}, {"wsPort", mIdentity.wsPort}, {"version", "2.0.0"}};
         SendResponse(conn, 200, kJson, info.dump());
         return 200;
     }
+    if (method == "GET" && route == "modules") {
+        auto modules = Updater::ModuleManager::Instance().GetInstalledModules();
+        json jModules = json::array();
+        for (const auto& m : modules) {
+            jModules.push_back({
+                {"id", m.id},
+                {"name", m.name},
+                {"version", m.version},
+                {"entryFile", m.entryFile},
+                {"sha256", m.sha256},
+                {"hotReload", m.hotReload},
+                {"enabled", m.enabled}
+            });
+        }
+        SendResponse(conn, 200, kJson, json{{"ok", true}, {"modules", jModules}}.dump());
+        return 200;
+    }
+
     if (method != "POST") { SendResponse(conn, 405, kJson, R"({"ok":false,"error":"use POST"})"); return 405; }
+
+    if (route == "system/rollback") {
+        bool success = Updater::OtaUpdater::Instance().RollbackToBackup();
+        if (success) {
+            SendResponse(conn, 200, kJson, R"({"ok":true,"message":"Rollback concluido. Reiniciando Switch..."})");
+            return 200;
+        } else {
+            SendResponse(conn, 500, kJson, R"({"ok":false,"error":"Falha ao executar rollback. Backup nao encontrado."})");
+            return 500;
+        }
+    }
+
+    if (route == "system/ota-update") {
+        const char* expectedSha = mg_get_header(conn, "X-Expected-Sha256");
+        const std::string sha = expectedSha ? Text::Trim(expectedSha) : "";
+        if (sha.empty()) {
+            SendResponse(conn, 400, kJson, R"({"ok":false,"error":"Cabecalho X-Expected-Sha256 ausente."})");
+            return 400;
+        }
+
+        const std::string tempNro = "sdmc:/switch/SwitchCast/modules/update.nro";
+        const char* clHeader = mg_get_header(conn, "Content-Length");
+        size_t totalBytes = clHeader ? static_cast<size_t>(std::strtoull(clHeader, nullptr, 10)) : 0;
+        Updater::OtaUpdater::Instance().SetDownloadProgress(0, totalBytes);
+
+        bool streamOk = StreamBodyToFile(conn, tempNro, [](size_t down, size_t total) {
+            Updater::OtaUpdater::Instance().SetDownloadProgress(down, total);
+        });
+        Updater::OtaUpdater::Instance().FinishDownload();
+
+        if (!streamOk) {
+            SendResponse(conn, 500, kJson, R"({"ok":false,"error":"Falha ao gravar SwitchCast.nro.tmp no SD."})");
+            return 500;
+        }
+
+        const char* hVer = mg_get_header(conn, "X-Version");
+        const char* hChange = mg_get_header(conn, "X-Changelog");
+        const char* hInstant = mg_get_header(conn, "X-Instant-Reboot");
+
+        std::string ver = hVer ? Text::Trim(hVer) : "2.0.0";
+        std::vector<std::string> changelog;
+        if (hChange) {
+            std::string raw = hChange;
+            std::stringstream ss(raw);
+            std::string item;
+            while (std::getline(ss, item, ';')) {
+                std::string t = Text::Trim(item);
+                if (!t.empty()) changelog.push_back(t);
+            }
+        }
+
+        bool instant = hInstant && (Text::EqualsIgnoreCase(hInstant, "true") || Text::EqualsIgnoreCase(hInstant, "1"));
+        bool ok = false;
+        if (instant) {
+            ok = Updater::OtaUpdater::Instance().ApplyUploadedNro(tempNro, sha);
+        } else {
+            ok = Updater::OtaUpdater::Instance().StageUploadedNro(tempNro, sha, ver, changelog);
+        }
+
+        if (ok) {
+            if (instant) {
+                SendResponse(conn, 200, kJson, R"({"ok":true,"message":"Atualizacao OTA instalada com sucesso! Reiniciando..."})");
+            } else {
+                SendResponse(conn, 200, kJson, R"({"ok":true,"message":"Atualizacao recebida e validada! Aviso exibido na tela do Switch para o usuario confirmar."})");
+            }
+            return 200;
+        } else {
+            SendResponse(conn, 400, kJson, R"({"ok":false,"error":"Verificacao SHA-256 falhou ou erro ao gravar atualizacao."})");
+            return 400;
+        }
+    }
+
+    if (route == "system/ota-apply") {
+        bool ok = Updater::OtaUpdater::Instance().ApplyPendingUpdate();
+        if (ok) {
+            SendResponse(conn, 200, kJson, R"({"ok":true,"message":"Aplicando atualizacao e reiniciando o Switch..."})");
+            return 200;
+        } else {
+            SendResponse(conn, 400, kJson, R"({"ok":false,"error":"Nenhuma atualizacao pendente para aplicar."})");
+            return 400;
+        }
+    }
+
+    if (route == "modules/install") {
+        const char* hId = mg_get_header(conn, "X-Module-Id");
+        const char* hVer = mg_get_header(conn, "X-Module-Version");
+        const char* hEntry = mg_get_header(conn, "X-Entry-File");
+        const char* hSha = mg_get_header(conn, "X-Expected-Sha256");
+
+        std::string modId = hId ? Text::Trim(hId) : "";
+        std::string modVer = hVer ? Text::Trim(hVer) : "1.0.0";
+        std::string modEntry = hEntry ? Text::Trim(hEntry) : "";
+        std::string modSha = hSha ? Text::Trim(hSha) : "";
+
+        if (modId.empty() || modEntry.empty() || modSha.empty()) {
+            SendResponse(conn, 400, kJson, R"({"ok":false,"error":"Headers X-Module-Id, X-Entry-File e X-Expected-Sha256 sao obrigatorios."})");
+            return 400;
+        }
+
+        mkdir("sdmc:/switch/SwitchCast/modules", 0777);
+        const std::string tempMod = "sdmc:/switch/SwitchCast/modules/temp_upload.tmp";
+        if (!StreamBodyToFile(conn, tempMod)) {
+            SendResponse(conn, 500, kJson, R"({"ok":false,"error":"Falha ao gravar arquivo temporario do modulo."})");
+            return 500;
+        }
+
+        Updater::ModuleDescriptor desc;
+        desc.id = modId;
+        desc.name = modId;
+        desc.version = modVer;
+        desc.entryFile = modEntry;
+        desc.sha256 = modSha;
+        desc.hotReload = true;
+        desc.enabled = true;
+
+        bool ok = Updater::ModuleManager::Instance().InstallOrUpdateModule(desc, tempMod);
+        if (ok) {
+            SendResponse(conn, 200, kJson, R"({"ok":true,"message":"Modulo instalado e hot-reload executado com sucesso."})");
+            return 200;
+        } else {
+            SendResponse(conn, 400, kJson, R"({"ok":false,"error":"Falha na validacao SHA-256 ou instalacao do modulo."})");
+            return 400;
+        }
+    }
 
     bool ok = false;
     const std::string reply = HandleJsonCommand(route, ReadBody(conn), ok);

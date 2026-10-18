@@ -12,15 +12,15 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITPRO)/libnx/switch_rules
 
-TARGET      := SwitchCast
+TARGET      := SwitchCastCore
 BUILD       := build
-SOURCES     := src src/common src/player src/network src/ui src/utils third_party/civetweb
+SOURCES     := src src/common src/player src/network src/ui src/utils src/updater third_party/civetweb
 DATA        :=
-INCLUDES    := src src/common third_party third_party/civetweb
+INCLUDES    := src src/common include third_party third_party/civetweb
 
 APP_TITLE   := SwitchCast
 APP_AUTHOR  := Aleff959
-APP_VERSION := 1.2.0
+APP_VERSION := 2.0.0
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
@@ -40,7 +40,7 @@ LDFLAGS      = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,--gc-sectio
 LIBS        := -lmpv -lavfilter -lpostproc -lavformat -lavcodec -lswscale -lswresample -lavutil \
                -lass -lharfbuzz -lfribidi -lfreetype -lplacebo -larchive -ldav1d \
                -lSDL2 -lEGL -lglapi -ldrm_nouveau -lglad \
-               -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -ljpeg -lwebp -lbz2 -llzma -lzstd -llz4 -lz \
+               -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lpng16 -ljpeg -lwebp -lbz2 -llzma -lzstd -llz4 -lz \
                -lnx -lm
 
 LIBDIRS     := $(PORTLIBS) $(LIBNX)

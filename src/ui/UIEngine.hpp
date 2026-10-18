@@ -58,8 +58,17 @@ private:
     void ShowToast(const std::string& text, double seconds = 1.5);
     void ApplyPendingDisplayMode();
     void SetBrightness(float value);
+    enum class ScreenView {
+        Dashboard,
+        UpdateCenter
+    };
+
     void RenderDashboard(const PlayerSnapshot& snap, bool hasWallpaper = false);
     void RenderVideoOverlay(const PlayerSnapshot& snap);
+    void RenderUpdateCenter();
+
+    ScreenView mCurrentScreen = ScreenView::Dashboard;
+    bool mUpdateDialogDismissed = false;
 
     std::shared_ptr<MpvPlayer> mPlayer;
     OledBurnInGuard mBurnIn;

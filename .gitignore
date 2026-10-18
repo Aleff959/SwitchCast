@@ -1,11 +1,20 @@
 # Build outputs
 build/
+build_launcher/
+launcher/build_launcher/
+launcher/*.nro
 *.elf
 *.nacp
 *.map
 *.o
 *.d
 *.log
+
+# Scratch & temporary testing
+scratch/
+
+# Android project isolation
+switchcast-android/
 
 # Operating System
 Thumbs.db
@@ -16,3 +25,4 @@ Desktop.ini
 .vscode/
 .idea/
 *.tmp
+
