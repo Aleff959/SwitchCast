@@ -181,22 +181,31 @@ bool OtaUpdater::CheckRemoteManifestAndDownload() {
             return false;
         }
 
+        SetDownloadProgress(0, info.sizeBytes);
+
+        CurlWriteContext writeCtx;
+        writeCtx.fp = fp;
+        writeCtx.totalBytes = info.sizeBytes;
+        writeCtx.downloadedBytes = 0;
+        writeCtx.callback = [this](size_t downloaded, size_t total, OtaStatus /*status*/) {
+            this->SetDownloadProgress(downloaded, total);
+        };
+
         curl_easy_setopt(curl, CURLOPT_URL, info.downloadUrl.c_str());
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 180L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchCast-OTA/1.3 (NintendoSwitch)");
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](void* ptr, size_t size, size_t nmemb, void* user) -> size_t {
-            return std::fwrite(ptr, size, nmemb, static_cast<FILE*>(user));
-        });
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchCast-OTA/" SWITCHCAST_VERSION_STR " (NintendoSwitch)");
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, OnCurlWriteFile);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &writeCtx);
 
         res = curl_easy_perform(curl);
         httpCode = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
         curl_easy_cleanup(curl);
         std::fclose(fp);
+        FinishDownload();
 
         if (res != CURLE_OK || httpCode != 200) {
             std::remove(kTempNro);
@@ -305,7 +314,7 @@ bool OtaUpdater::StageUploadedNro(const std::string& tempFilePath, const std::st
     }
 
     CoreUpdateInfo info;
-    info.version = version.empty() ? "2.0.0" : version;
+    info.version = version.empty() ? SWITCHCAST_VERSION_STR : version;
     info.sha256 = expectedSha256;
     info.changelog = changelog.empty() ? std::vector<std::string>{
         "Atualizacao recebida via rede local (LAN)",
@@ -397,7 +406,7 @@ bool OtaUpdater::StartInstallation() {
         mInstallStage.store(InstallStage::Writing);
         {
             std::lock_guard<std::mutex> lock(mInstallMutex);
-            mInstallStatus = "Pacote v2.0.0 preparado para reinicializacao...";
+            mInstallStatus = "Pacote v" SWITCHCAST_VERSION_STR " preparado para reinicializacao...";
         }
 
         #ifdef __SWITCH__
@@ -479,23 +488,22 @@ bool OtaUpdater::ApplyUploadedNro(const std::string& tempFilePath, const std::st
 }
 
 bool OtaUpdater::RollbackToBackup() {
-    std::string targetNro = GetTargetNroPath();
-    std::string backupNro = GetBackupNroPath();
-
     struct stat st{};
-    if (stat(backupNro.c_str(), &st) != 0) return false;
+    if (stat(kBackupNro, &st) != 0 || st.st_size < 0x80) return false;
 
-    #ifdef __SWITCH__
-    romfsExit();
-    #endif
-
-    std::remove(targetNro.c_str());
-    if (std::rename(backupNro.c_str(), targetNro.c_str()) != 0) {
-        if (!CopyFileContents(backupNro, targetNro)) return false;
-        std::remove(backupNro.c_str());
+    // Em vez de tentar sobrescrever o NRO com o Core aberto no FAT32 (permissão negada no Horizon),
+    // grava a flag de rollback em pending_update.json e agenda o restart para que o Launcher
+    // execute a restauração limpa do .bak sem travas (Zero-Lock!)
+    mkdir("sdmc:/switch/SwitchCast/modules", 0777);
+    std::ofstream ofs(kStateFile, std::ios::trunc);
+    if (ofs.is_open()) {
+        ofs << "{\n"
+            << "  \"boot_pending\": true,\n"
+            << "  \"rollback_pending\": true,\n"
+            << "  \"status\": \"rollback_requested_by_core\"\n"
+            << "}\n";
     }
-
-    WriteBootState(false, "rolled_back_to_previous");
+    ApplyUpdateAndScheduleRestart();
     return TriggerSelfRestart();
 }
 

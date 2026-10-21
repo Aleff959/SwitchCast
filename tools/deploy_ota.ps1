@@ -4,7 +4,7 @@ param(
     [string]$FilePath = "",
     [string]$ModuleId = "",
     [string]$EntryFile = "protocols/custom.js",
-    [string]$Version = "2.0.0",
+    [string]$Version = "2.1.0",
     [string]$Changelog = "Notificacao interativa de atualizacao; Download em background; Auto-restart BootGuard",
     [switch]$InstantReboot,
     [int]$Port = 8080

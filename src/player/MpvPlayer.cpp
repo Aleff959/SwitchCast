@@ -76,10 +76,15 @@ bool MpvPlayer::Initialize(const std::string& fontsDir) {
     opt("demuxer-readahead-secs", "30");
     opt("network-timeout", "15");
 
-    // --- Áudio: backend nativo do Horizon (audren) quando disponível ---
+    // --- Áudio Pro v2.1.0: Downmix ITU-R BS.775 + Volume Boost 150% ---
     SetFirstSupportedOption("ao", {"hos", "sdl"});
     opt("audio-channels", "stereo");
     opt("audio-samplerate", "48000");
+    opt("ad-lavc-downmix", "yes");
+    opt("audio-normalize-downmix", "yes");
+    opt("volume-max", "150");
+    // Soft limiter para impedir distorção (clipping) acima de 100% nos alto-falantes do Switch
+    opt("af", "lavfi=[alimiter=limit=0.95:attack=5:release=50]");
 
     // --- Cor: BT.709 com níveis completos (pretos reais no OLED) ---
     opt("target-prim", "bt.709");
@@ -133,7 +138,7 @@ void MpvPlayer::ApplyHeaders(const std::map<std::string, std::string>& headers) 
         else lines.push_back(key + ": " + value);
     }
 
-    mpv_set_property_string(mMpv, "user-agent", userAgent.empty() ? "SwitchCast/2.0.0" : userAgent.c_str());
+    mpv_set_property_string(mMpv, "user-agent", userAgent.empty() ? "SwitchCast/" SWITCHCAST_VERSION_STR : userAgent.c_str());
     mpv_set_property_string(mMpv, "referrer", referrer.c_str());
 
     std::vector<mpv_node> items(lines.size());
@@ -220,7 +225,7 @@ void MpvPlayer::SeekRelativeMs(int64_t deltaMs) {
 void MpvPlayer::SetVolume(int percent) {
     if (!mMpv) return;
     char buf[16];
-    std::snprintf(buf, sizeof buf, "%d", std::clamp(percent, 0, 100));
+    std::snprintf(buf, sizeof buf, "%d", std::clamp(percent, 0, 150));
     mpv_set_property_string(mMpv, "volume", buf);
 }
 
@@ -558,7 +563,7 @@ void MpvPlayer::HandlePropertyChange(const mpv_event_property& prop, uint64_t id
     std::lock_guard<std::mutex> lock(mMutex);
     if (mIsWallpaper) {
         if (id == kObsVolume && prop.format == MPV_FORMAT_DOUBLE) {
-            mSnapshot.volume = std::clamp(static_cast<int>(*static_cast<double*>(prop.data) + 0.5), 0, 100);
+            mSnapshot.volume = std::clamp(static_cast<int>(*static_cast<double*>(prop.data) + 0.5), 0, 150);
         } else if (id == kObsMute && prop.format == MPV_FORMAT_FLAG) {
             mSnapshot.muted = *static_cast<int*>(prop.data) != 0;
         }
@@ -584,7 +589,7 @@ void MpvPlayer::HandlePropertyChange(const mpv_event_property& prop, uint64_t id
             break;
         case kObsVolume:
             if (prop.format == MPV_FORMAT_DOUBLE)
-                mSnapshot.volume = std::clamp(static_cast<int>(*static_cast<double*>(prop.data) + 0.5), 0, 100);
+                mSnapshot.volume = std::clamp(static_cast<int>(*static_cast<double*>(prop.data) + 0.5), 0, 150);
             break;
         case kObsMute:
             if (prop.format == MPV_FORMAT_FLAG) mSnapshot.muted = *static_cast<int*>(prop.data) != 0;

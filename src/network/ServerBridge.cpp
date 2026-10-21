@@ -91,7 +91,7 @@ void SendResponse(mg_connection* conn, int status, const char* contentType, cons
     mg_printf(conn,
               "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nConnection: close\r\n"
               "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: Content-Type\r\n"
-              "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nServer: SwitchCast/2.0.0\r\n%s\r\n",
+              "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nServer: SwitchCast/" SWITCHCAST_VERSION_STR "\r\n%s\r\n",
               status, text, contentType, body.size(), extraHeaders.c_str());
     if (!body.empty()) mg_write(conn, body.data(), body.size());
 }
@@ -135,9 +135,9 @@ bool ParseCommand(const std::string& name, const json& j, NetworkCommand& cmd, s
         return true;
     }
     if (name == "volume") {
-        if (!j.contains("level") || !j["level"].is_number()) { err = "informe level (0-100)"; return false; }
+        if (!j.contains("level") || !j["level"].is_number()) { err = "informe level (0-150)"; return false; }
         cmd.type = NetworkCommand::Type::SetVolume;
-        cmd.volume = static_cast<int>(std::max<int64_t>(0, std::min<int64_t>(100, num("level", 100))));
+        cmd.volume = static_cast<int>(std::max<int64_t>(0, std::min<int64_t>(150, num("level", 100))));
         return true;
     }
     if (name == "mute") {
@@ -339,7 +339,7 @@ int ServerBridge::HandleApi(mg_connection* conn) {
         json info{{"name", mIdentity.friendlyName}, {"author", "Aleff959"},
                   {"description", "Receptor de mídia e streaming de alto desempenho para Nintendo Switch OLED com aceleração NVDEC"},
                   {"uuid", mIdentity.uuid}, {"ip", CurrentIp()},
-                  {"httpPort", mIdentity.httpPort}, {"wsPort", mIdentity.wsPort}, {"version", "2.0.0"}};
+                  {"httpPort", mIdentity.httpPort}, {"wsPort", mIdentity.wsPort}, {"version", SWITCHCAST_VERSION_STR}};
         SendResponse(conn, 200, kJson, info.dump());
         return 200;
     }
@@ -401,7 +401,7 @@ int ServerBridge::HandleApi(mg_connection* conn) {
         const char* hChange = mg_get_header(conn, "X-Changelog");
         const char* hInstant = mg_get_header(conn, "X-Instant-Reboot");
 
-        std::string ver = hVer ? Text::Trim(hVer) : "2.0.0";
+        std::string ver = hVer ? Text::Trim(hVer) : SWITCHCAST_VERSION_STR;
         std::vector<std::string> changelog;
         if (hChange) {
             std::string raw = hChange;

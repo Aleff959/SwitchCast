@@ -20,7 +20,7 @@ namespace {
 constexpr const char* kMulticastAddr = "239.255.255.250";
 constexpr uint16_t kSsdpPort = 1900;
 constexpr double kNotifyIntervalSec = 30.0;
-constexpr const char* kServerString = "Horizon/1.0 UPnP/1.0 SwitchCast/2.0.0";
+constexpr const char* kServerString = "Horizon/1.0 UPnP/1.0 SwitchCast/" SWITCHCAST_VERSION_STR;
 
 double Now() {
     using namespace std::chrono;

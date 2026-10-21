@@ -184,7 +184,7 @@ UpnpService::Result UpnpService::HandleRenderingControl(const SoapRequest& req) 
         if (end == v.c_str()) return Fault(402, "Invalid Args");
         NetworkCommand cmd;
         cmd.type = NetworkCommand::Type::SetVolume;
-        cmd.volume = static_cast<int>(std::clamp<long>(level, 0, 100));
+        cmd.volume = static_cast<int>(std::clamp<long>(level, 0, 150));
         mSubmit(std::move(cmd));
         return Ok(svc, a);
     }

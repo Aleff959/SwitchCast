@@ -1,39 +1,40 @@
 {
-  "schema_version": 1,
-  "channel": "stable",
-  "core": {
-    "version": "2.0.0",
-    "version_code": 20000,
-    "min_hos_version": "16.0.0",
-    "download_url": "https://github.com/Aleff959/SwitchCast/releases/download/v2.0.0/SwitchCastCore.nro",
-    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "size_bytes": 4821504,
-    "changelog": [
-      "Nova arquitetura modular com Launcher independente (SwitchCast.nro)",
-      "Atualizacoes OTA seguras e sem bloqueio de arquivos FAT32 (Zero-Lock)",
-      "Motor 2D nativo em OpenGL 4.3 com shaders GLSL e bordas arredondadas",
-      "Novo dashboard escuro para telas OLED e correcão de metricas de fontes FreeType",
-      "Protecao Anti-Brick BootGuard com rollback automatico"
-    ]
-  },
-  "modules": [
-    {
-      "id": "protocol.roku_bridge",
-      "name": "Roku & DLNA Extended Bridge",
-      "version": "1.0.2",
-      "entry_file": "protocols/roku_bridge.js",
-      "download_url": "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/roku_bridge.js",
-      "sha256": "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
-      "hot_reload": true
-    },
-    {
-      "id": "parser.xtream_iptv",
-      "name": "Xtream Codes & M3U8 Advanced Parser",
-      "version": "1.2.0",
-      "entry_file": "protocols/xtream_iptv.js",
-      "download_url": "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/xtream_iptv.js",
-      "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
-      "hot_reload": true
-    }
-  ]
+    "schema_version":  1,
+    "channel":  "stable",
+    "core":  {
+                 "version":  "2.1.0",
+                 "version_code":  20100,
+                 "min_hos_version":  "16.0.0",
+                 "download_url":  "https://github.com/Aleff959/SwitchCast/releases/download/v2.1.0/SwitchCastCore.nro",
+                 "sha256":  "4fb335981cd05a5d54a1e2ca6502e687b9d2dddda1cc2432f5837d431a0177a0",
+                 "size_bytes":  30273491,
+                 "changelog":  [
+                                   "Audio Pro: Downmix 5.1 ITU-R BS.775 e Volume Boost 150% com Soft Limiter",
+                                   "Core Leve: desacoplamento do RomFS e remocao de simbolos de depuracao",
+                                   "Launcher NetInstaller com auto-cura e download grafico do Core via rede",
+                                   "Rollback Anti-Brick Zero-Lock com restauracao de backup .bak pelo Launcher",
+                                   "Barra de download OTA corrigida com acompanhamento continuo em tempo real",
+                                   "Versionamento unificado v2.1.0 em todos os protocolos e interfaces"
+                               ]
+             },
+    "modules":  [
+                    {
+                        "id":  "protocol.roku_bridge",
+                        "name":  "Roku \u0026 DLNA Extended Bridge",
+                        "version":  "1.0.2",
+                        "entry_file":  "protocols/roku_bridge.js",
+                        "download_url":  "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/roku_bridge.js",
+                        "sha256":  "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+                        "hot_reload":  true
+                    },
+                    {
+                        "id":  "parser.xtream_iptv",
+                        "name":  "Xtream Codes \u0026 M3U8 Advanced Parser",
+                        "version":  "1.2.0",
+                        "entry_file":  "protocols/xtream_iptv.js",
+                        "download_url":  "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/xtream_iptv.js",
+                        "sha256":  "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+                        "hot_reload":  true
+                    }
+                ]
 }

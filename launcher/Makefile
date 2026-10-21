@@ -17,7 +17,7 @@ INCLUDES    := . ../src/ui ../src/common
 
 APP_TITLE   := SwitchCast
 APP_AUTHOR  := Aleff959
-APP_VERSION := 2.0.0
+APP_VERSION := 2.1.0
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
@@ -26,7 +26,7 @@ CXXFLAGS    := $(CFLAGS) -std=gnu++20 -Wno-deprecated-declarations
 ASFLAGS     := -g $(ARCH)
 LDFLAGS      = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,--gc-sections
 
-LIBS        := -lEGL -lglapi -ldrm_nouveau -lglad -lfreetype -lharfbuzz -lfribidi -lpng16 -lbz2 -lz -lnx -lm
+LIBS        := -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lEGL -lglapi -ldrm_nouveau -lglad -lfreetype -lharfbuzz -lfribidi -lpng16 -lbz2 -lz -lnx -lm
 LIBDIRS     := $(PORTLIBS) $(LIBNX)
 
 #---------------------------------------------------------------------------------

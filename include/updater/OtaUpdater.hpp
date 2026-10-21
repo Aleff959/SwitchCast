@@ -5,6 +5,7 @@
 #include <atomic>
 #include <mutex>
 #include <thread>
+#include "Types.hpp"
 
 namespace SwitchCast::Updater {
 
@@ -42,8 +43,8 @@ using ProgressCallback = std::function<void(size_t bytesDownloaded, size_t total
 
 class OtaUpdater {
 public:
-    static constexpr const char* kCurrentVersion = "2.0.0";
-    static constexpr int kCurrentVersionCode = 20000;
+    static constexpr const char* kCurrentVersion = SWITCHCAST_VERSION_STR;
+    static constexpr int kCurrentVersionCode = SWITCHCAST_VERSION_CODE;
 
     static OtaUpdater& Instance();
 

@@ -6,6 +6,7 @@
 #include <glad/glad.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <curl/curl.h>
 
 #include <cstdio>
 #include <cstdint>
@@ -16,14 +17,21 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "Types.hpp"
 #include "../src/ui/Renderer2D.hpp"
 
 namespace {
 
-constexpr const char* kCorePath   = "sdmc:/switch/SwitchCast/modules/SwitchCastCore.nro";
-constexpr const char* kUpdatePath = "sdmc:/switch/SwitchCast/modules/update.nro";
-constexpr const char* kStatePath  = "sdmc:/switch/SwitchCast/modules/pending_update.json";
-constexpr const char* kLegacyPath = "sdmc:/switch/SwitchCast/SwitchCast.nro.tmp";
+constexpr const char* kCorePath        = "sdmc:/switch/SwitchCast/modules/SwitchCastCore.nro";
+constexpr const char* kBackupPath      = "sdmc:/switch/SwitchCast/modules/SwitchCastCore.nro.bak";
+constexpr const char* kUpdatePath      = "sdmc:/switch/SwitchCast/modules/update.nro";
+constexpr const char* kStatePath       = "sdmc:/switch/SwitchCast/modules/pending_update.json";
+constexpr const char* kLegacyPath      = "sdmc:/switch/SwitchCast/SwitchCast.nro.tmp";
+constexpr const char* kCoreDownloadUrl = "https://github.com/Aleff959/SwitchCast/releases/latest/download/SwitchCastCore.nro";
+
+inline void sleepMs(u64 ms) {
+    svcSleepThread(ms * 1'000'000ULL);
+}
 
 // Validacao de seguranca do executavel NRO
 bool ValidateNro(const char* path) {
@@ -68,38 +76,40 @@ public:
 
         mDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if (mDisplay == EGL_NO_DISPLAY || !eglInitialize(mDisplay, nullptr, nullptr)) return false;
-        if (!eglBindAPI(EGL_OPENGL_API)) return false;
 
-        const EGLint configAttrs[] = {
+        eglBindAPI(EGL_OPENGL_API);
+
+        static const EGLint attribs[] = {
             EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-            EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
-            EGL_DEPTH_SIZE, 24, EGL_STENCIL_SIZE, 8,
+            EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
+            EGL_RED_SIZE,        8,
+            EGL_GREEN_SIZE,      8,
+            EGL_BLUE_SIZE,       8,
+            EGL_ALPHA_SIZE,      8,
+            EGL_DEPTH_SIZE,      0,
+            EGL_STENCIL_SIZE,    0,
             EGL_NONE
         };
 
         EGLint numConfigs = 0;
-        eglChooseConfig(mDisplay, configAttrs, &mConfig, 1, &numConfigs);
-        if (numConfigs == 0) return false;
+        if (!eglChooseConfig(mDisplay, attribs, &mConfig, 1, &numConfigs) || numConfigs < 1) return false;
 
-        NWindow* window = nwindowGetDefault();
-        nwindowSetDimensions(window, static_cast<u32>(width), static_cast<u32>(height));
-        mSurface = eglCreateWindowSurface(mDisplay, mConfig, window, nullptr);
+        mSurface = eglCreateWindowSurface(mDisplay, mConfig, nwindowGetDefault(), nullptr);
         if (mSurface == EGL_NO_SURFACE) return false;
 
-        const EGLint ctxAttrs[] = {
-            EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR,
-            EGL_CONTEXT_MAJOR_VERSION_KHR, 4,
-            EGL_CONTEXT_MINOR_VERSION_KHR, 3,
+        static const EGLint ctxAttribs[] = {
+            EGL_CONTEXT_MAJOR_VERSION, 4,
+            EGL_CONTEXT_MINOR_VERSION, 3,
             EGL_NONE
         };
 
-        mContext = eglCreateContext(mDisplay, mConfig, EGL_NO_CONTEXT, ctxAttrs);
+        mContext = eglCreateContext(mDisplay, mConfig, EGL_NO_CONTEXT, ctxAttribs);
         if (mContext == EGL_NO_CONTEXT) return false;
+
         if (!eglMakeCurrent(mDisplay, mSurface, mSurface, mContext)) return false;
+        if (!gladLoadGL()) return false;
 
-        gladLoadGL();
-        eglSwapInterval(mDisplay, 1);
-
+        glViewport(0, 0, mWidth, mHeight);
         mRenderer.Initialize(mWidth, mHeight);
         mInitialized = true;
         return true;
@@ -114,79 +124,63 @@ public:
             if (mSurface != EGL_NO_SURFACE) eglDestroySurface(mDisplay, mSurface);
             eglTerminate(mDisplay);
         }
+        mDisplay = EGL_NO_DISPLAY;
+        mSurface = EGL_NO_SURFACE;
+        mContext = EGL_NO_CONTEXT;
         mInitialized = false;
     }
 
     void RenderFrame(const std::string& statusText, float progressFraction) {
         if (!mInitialized) return;
 
-        glClearColor(0.043f, 0.055f, 0.078f, 1.0f); // #0B0E14
+        glClearColor(0.05f, 0.05f, 0.07f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         mRenderer.BeginFrame(mWidth, mHeight);
 
-        // 1. Fundo Base OLED
-        mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight),
-                           SwitchCast::Color::Hex(0x0B0E14));
+        // Fundo com gradiente sutil
+        mRenderer.DrawRect(0, 0, mWidth, mHeight, SwitchCast::Color::Hex(0x0C0E14, 1.0f));
 
-        // Barra de Status Superior
-        const float topY = 24.0f;
-        mRenderer.DrawPill(48.0f, topY, 140.0f, 30.0f, SwitchCast::Color::Hex(0x1A1D24));
-        mRenderer.DrawPillOutline(48.0f, topY, 140.0f, 30.0f, 1.0f, SwitchCast::Color::Hex(0x35383F));
-        mRenderer.DrawText(48.0f + 70.0f, topY + 8.0f, "SwitchCast", 14.0f, SwitchCast::Color::Hex(0xE2E2E6), SwitchCast::TextAlign::Center);
-
-        // 2. Card Central Master (Surface Container #1D2024, radius 28px)
-        const float cardW = (mWidth >= 1920) ? 960.0f : 800.0f;
-        const float cardH = (mHeight >= 1080) ? 460.0f : 380.0f;
+        const float cardW = 720.0f;
+        const float cardH = 260.0f;
         const float cardX = (mWidth - cardW) * 0.5f;
         const float cardY = (mHeight - cardH) * 0.5f;
-        const float cardRadius = 28.0f;
 
-        mRenderer.DrawRoundedRect(cardX, cardY, cardW, cardH, cardRadius, SwitchCast::Color::Hex(0x1D2024));
-        mRenderer.DrawRoundedRectOutline(cardX, cardY, cardW, cardH, cardRadius, 1.0f, SwitchCast::Color::Hex(0x35383F));
+        // Card central elegante com borda em vidro
+        mRenderer.DrawRoundedRect(cardX, cardY, cardW, cardH, 20.0f, SwitchCast::Color::Hex(0x161922, 0.95f));
+        mRenderer.DrawRoundedRectOutline(cardX, cardY, cardW, cardH, 20.0f, 1.5f, SwitchCast::Color::Hex(0x282D3C, 0.8f));
 
-        // 3. Avatar Icon em Primary Container (#004A77)
-        const float iconCenterX = cardX + cardW * 0.5f;
-        const float iconCenterY = cardY + 60.0f;
-        mRenderer.DrawCircle(iconCenterX, iconCenterY, 30.0f, SwitchCast::Color::Hex(0x004A77));
+        // Titulo SwitchCast com badge OTA
+        mRenderer.DrawText(cardX + 40.0f, cardY + 36.0f, "SwitchCast", 26.0f, SwitchCast::Color::Hex(0xFFFFFF), SwitchCast::TextAlign::Left);
 
-        // Icone vetorial de download / atualizacao
-        mRenderer.DrawRect(iconCenterX - 3.0f, iconCenterY - 11.0f, 6.0f, 13.0f, SwitchCast::Color::Hex(0xA8C7FA));
-        mRenderer.DrawRoundedRect(iconCenterX - 8.0f, iconCenterY + 2.0f, 16.0f, 5.0f, 2.5f, SwitchCast::Color::Hex(0xA8C7FA));
-        mRenderer.DrawRoundedRect(iconCenterX - 10.0f, iconCenterY + 9.0f, 20.0f, 4.0f, 2.0f, SwitchCast::Color::Hex(0xA8C7FA));
+        const float badgeX = cardX + 40.0f + mRenderer.MeasureTextWidth("SwitchCast", 26.0f) + 14.0f;
+        mRenderer.DrawPill(badgeX, cardY + 38.0f, 74.0f, 22.0f, SwitchCast::Color::Hex(0x00E5FF, 0.2f));
+        mRenderer.DrawPillOutline(badgeX, cardY + 38.0f, 74.0f, 22.0f, 1.0f, SwitchCast::Color::Hex(0x00E5FF, 0.8f));
+        mRenderer.DrawText(badgeX + 37.0f, cardY + 43.0f, "UPDATE", 10.0f, SwitchCast::Color::Hex(0x00E5FF), SwitchCast::TextAlign::Center);
 
-        // 4. Titulo e Subtitulo com Tipografia Aumentada e Alinhada
-        mRenderer.DrawText(iconCenterX, cardY + 110.0f, "Atualizando componentes do sistema", 26.0f, SwitchCast::Color::Hex(0xE2E2E6), SwitchCast::TextAlign::Center);
-        mRenderer.DrawText(iconCenterX, cardY + 146.0f, "Instalando o modulo principal com seguranca", 16.0f, SwitchCast::Color::Hex(0xC4C7C5), SwitchCast::TextAlign::Center);
+        // Descricao da acao atual
+        mRenderer.DrawText(cardX + 40.0f, cardY + 84.0f, statusText, 15.0f, SwitchCast::Color::Hex(0x9E9E9E), SwitchCast::TextAlign::Left);
 
-        // 5. Container Interno de Progresso (Surface Container High #24282F, radius 18px)
-        const float boxW = cardW - 72.0f;
-        const float boxH = 110.0f;
-        const float boxX = cardX + 36.0f;
-        const float boxY = cardY + 180.0f;
+        // Trilho da barra de progresso
+        const float barX = cardX + 40.0f;
+        const float barY = cardY + 140.0f;
+        const float barW = cardW - 80.0f;
+        const float barH = 10.0f;
 
-        mRenderer.DrawRoundedRect(boxX, boxY, boxW, boxH, 18.0f, SwitchCast::Color::Hex(0x24282F));
-        mRenderer.DrawRoundedRectOutline(boxX, boxY, boxW, boxH, 18.0f, 1.0f, SwitchCast::Color::Hex(0x333740));
+        mRenderer.DrawPill(barX, barY, barW, barH, SwitchCast::Color::Hex(0x252936, 1.0f));
 
-        // Texto da Etapa Atual (em fonte destacada)
-        mRenderer.DrawText(boxX + 24.0f, boxY + 22.0f, statusText, 18.0f, SwitchCast::Color::Hex(0xE2E2E6), SwitchCast::TextAlign::Left);
+        // Preenchimento gradiente da barra (Cyan para Roxo eletrico)
+        const float fillW = std::clamp(barW * progressFraction, 10.0f, barW);
+        mRenderer.DrawPill(barX, barY, fillW, barH, SwitchCast::Color::Hex(0x00E5FF, 1.0f));
 
-        // Barra Linear em Pilula
-        const float barX = boxX + 24.0f;
-        const float barY = boxY + 60.0f;
-        const float barW = boxW - 140.0f;
-        const float barH = 14.0f;
+        // Porcentagem numerica
+        int pct = static_cast<int>(progressFraction * 100.0f + 0.5f);
+        mRenderer.DrawText(barX + barW, barY - 24.0f, std::to_string(pct) + "%", 15.0f, SwitchCast::Color::Hex(0x00E5FF), SwitchCast::TextAlign::Right);
 
-        mRenderer.DrawProgressBar(barX, barY, barW, barH, progressFraction, SwitchCast::Color::Hex(0x33353A), SwitchCast::Color::Hex(0xA8C7FA));
-
-        // Porcentagem alinhada perfeitamente a direita e verticalmente com a barra
-        const int pct = std::clamp(static_cast<int>(progressFraction * 100.0f), 0, 100);
-        std::string pctStr = std::to_string(pct) + "%";
-        const float pctX = boxX + boxW - 24.0f;
-        mRenderer.DrawText(pctX, barY - 2.0f, pctStr, 18.0f, SwitchCast::Color::Hex(0xA8C7FA), SwitchCast::TextAlign::Right);
-
-        // 6. Rodape do Card com Dica de Seguranca
-        mRenderer.DrawText(iconCenterX, cardY + cardH - 32.0f, "Por favor, nao desligue o console durante a instalacao", 15.0f, SwitchCast::Color::Hex(0x8E918F), SwitchCast::TextAlign::Center);
+        // Rodape de instrucoes de seguranca
+        mRenderer.DrawText(mWidth * 0.5f, cardY + cardH - 32.0f,
+                           "Nao remova o cartao microSD nem desligue o console.",
+                           13.0f, SwitchCast::Color::Hex(0x606573), SwitchCast::TextAlign::Center);
 
         mRenderer.EndFrame();
         eglSwapBuffers(mDisplay, mSurface);
@@ -205,6 +199,31 @@ private:
     SwitchCast::Renderer2D mRenderer;
 };
 
+struct NetDownloadProgress {
+    LauncherGraphics* gfx = nullptr;
+    curl_off_t lastRenderBytes = 0;
+};
+
+inline int OnNetProgress(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t, curl_off_t) {
+    auto* ctx = static_cast<NetDownloadProgress*>(clientp);
+    if (!ctx || !ctx->gfx) return 0;
+
+    if (dlnow - ctx->lastRenderBytes >= 65536 || (dltotal > 0 && dlnow == dltotal)) {
+        ctx->lastRenderBytes = dlnow;
+        float fraction = (dltotal > 0) ? std::clamp(static_cast<float>(dlnow) / static_cast<float>(dltotal), 0.05f, 0.95f) : 0.5f;
+        char buf[128];
+        double nowMb = static_cast<double>(dlnow) / (1024.0 * 1024.0);
+        if (dltotal > 0) {
+            double totMb = static_cast<double>(dltotal) / (1024.0 * 1024.0);
+            std::snprintf(buf, sizeof(buf), "Baixando SwitchCast Core (%.1f / %.1f MB)...", nowMb, totMb);
+        } else {
+            std::snprintf(buf, sizeof(buf), "Baixando SwitchCast Core (%.1f MB)...", nowMb);
+        }
+        ctx->gfx->RenderFrame(buf, fraction);
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -216,14 +235,65 @@ int main(int argc, char* argv[]) {
         std::rename(kLegacyPath, kUpdatePath);
     }
 
-    struct stat stUpdate{}, stCore{};
-    const bool hasUpdate = (stat(kUpdatePath, &stUpdate) == 0 && stUpdate.st_size > 0x80);
-    const bool hasCore   = (stat(kCorePath, &stCore) == 0 && stCore.st_size > 0x80);
+    // Leitura dos controles para deteccao do combo de Rollback (L + R)
+    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+    PadState pad;
+    padInitializeDefault(&pad);
+    padUpdate(&pad);
+    const u64 initialButtons = padGetButtonsDown(&pad) | padGetButtons(&pad);
+    const bool forceRollback = (initialButtons & HidNpadButton_L) && (initialButtons & HidNpadButton_R);
+
+    // Verificacao de flag de rollback registrada pelo Core em pending_update.json
+    bool rollbackFlagInState = false;
+    {
+        FILE* fState = std::fopen(kStatePath, "r");
+        if (fState) {
+            char sBuf[512];
+            size_t r = std::fread(sBuf, 1, sizeof(sBuf) - 1, fState);
+            sBuf[r] = '\0';
+            std::fclose(fState);
+            if (std::strstr(sBuf, "\"rollback_pending\": true")) {
+                rollbackFlagInState = true;
+            }
+        }
+    }
+
+    const bool hasBackup = ValidateNro(kBackupPath);
+    const bool isHandheld = (appletGetOperationMode() == AppletOperationMode_Handheld);
+    const int screenW = isHandheld ? 1280 : 1920;
+    const int screenH = isHandheld ? 720 : 1080;
+
+    // =========================================================================
+    // CENARIO 0: ROLLBACK ANTI-BRICK RESTAURACAO DE BACKUP (Zero-Lock!)
+    // =========================================================================
+    if ((forceRollback || rollbackFlagInState) && hasBackup) {
+        LauncherGraphics gfx;
+        if (gfx.Initialize(screenW, screenH)) {
+            gfx.RenderFrame("Restaurando versao anterior de seguranca (Rollback)...", 0.5f);
+        }
+        std::remove(kCorePath);
+        std::rename(kBackupPath, kCorePath);
+        std::remove(kStatePath);
+        std::remove(kUpdatePath);
+        fsdevCommitDevice("sdmc");
+        if (gfx.Initialize(screenW, screenH)) {
+            gfx.RenderFrame("Rollback concluido com sucesso! Iniciando SwitchCast...", 1.0f);
+            sleepMs(400);
+            gfx.Shutdown();
+        }
+        if (envHasNextLoad()) {
+            envSetNextLoad(kCorePath, kCorePath);
+        }
+        return 0;
+    }
+
+    bool hasUpdate = ValidateNro(kUpdatePath);
+    bool hasCore   = ValidateNro(kCorePath);
 
     // =========================================================================
     // CENARIO 1: INICIALIZACAO TRANSPARENTE E INSTANTANEA NO DIA A DIA
     // =========================================================================
-    // Se NAO houver atualizacao para aplicar e o modulo Core ja estiver instalado:
+    // Se NAO houver atualizacao para aplicar e o modulo Core ja estiver instalado e valido:
     // O Launcher NAO inicializa janelas graficas, GPU ou buffers.
     // Ele agenda a carga do SwitchCastCore imediatamente e encerra em 2ms!
     if (!hasUpdate && hasCore) {
@@ -234,19 +304,21 @@ int main(int argc, char* argv[]) {
     }
 
     // =========================================================================
-    // CENARIO 2: ATUALIZACAO OU INSTALACAO DO MODULO
+    // CENARIO 2: ATUALIZACAO OU INSTALACAO DO MODULO (NetInstaller / Update)
     // =========================================================================
     // A interface so aparece quando ha trabalho real de substituicao a ser feito!
-    const bool isHandheld = (appletGetOperationMode() == AppletOperationMode_Handheld);
-    const int screenW = isHandheld ? 1280 : 1920;
-    const int screenH = isHandheld ? 720 : 1080;
-
     LauncherGraphics gfx;
     if (!gfx.Initialize(screenW, screenH)) {
         // Fallback de emergencia sem graficos se o subsistema falhar
         if (hasUpdate) {
-            std::remove(kCorePath);
+            if (hasCore && ValidateNro(kCorePath)) {
+                std::remove(kBackupPath);
+                std::rename(kCorePath, kBackupPath);
+            } else {
+                std::remove(kCorePath);
+            }
             std::rename(kUpdatePath, kCorePath);
+            std::remove(kStatePath);
             fsdevCommitDevice("sdmc");
         }
         if (envHasNextLoad()) {
@@ -255,9 +327,50 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    auto sleepMs = [](u64 ms) {
-        svcSleepThread(ms * 1'000'000ULL);
-    };
+    // MODO NETINSTALLER / AUTO-CURA: Baixa o Core via rede se o SD estiver sem ele
+    if (!hasUpdate && !hasCore) {
+        gfx.RenderFrame("Conectando a rede para baixar o SwitchCast Core...", 0.05f);
+        nifmInitialize(NifmServiceType_User);
+        socketInitializeDefault();
+
+        FILE* fp = std::fopen(kUpdatePath, "wb");
+        if (fp) {
+            CURL* curl = curl_easy_init();
+            if (curl) {
+                NetDownloadProgress prog;
+                prog.gfx = &gfx;
+                curl_easy_setopt(curl, CURLOPT_URL, kCoreDownloadUrl);
+                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+                curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+                curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT, 300L);
+                curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchCast-Launcher/" SWITCHCAST_VERSION_STR " (NintendoSwitch)");
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](void* ptr, size_t size, size_t nmemb, void* user) -> size_t {
+                    return std::fwrite(ptr, size, nmemb, static_cast<FILE*>(user));
+                });
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+                curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+                curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, OnNetProgress);
+                curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &prog);
+
+                CURLcode res = curl_easy_perform(curl);
+                curl_easy_cleanup(curl);
+                std::fclose(fp);
+
+                if (res != CURLE_OK) {
+                    std::remove(kUpdatePath);
+                    gfx.RenderFrame("Erro ao baixar o Core via rede! Verifique o Wi-Fi.", 0.05f);
+                    sleepMs(2500);
+                }
+            } else {
+                std::fclose(fp);
+            }
+        }
+        socketExit();
+        nifmExit();
+
+        hasUpdate = ValidateNro(kUpdatePath);
+    }
 
     // ETAPA 1: Verificacao de Integridade (15%)
     gfx.RenderFrame("Validando integridade do pacote de atualizacao...", 0.15f);
@@ -271,13 +384,17 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // ETAPA 2: Remocao Segura da Versao Anterior (40%)
-    // O modulo Core nao esta em execucao, liberando a gravacao direta no cartao microSD.
-    gfx.RenderFrame("Removendo versao anterior com seguranca...", 0.40f);
+    // ETAPA 2: Backup e Remocao Segura da Versao Anterior (40%)
+    gfx.RenderFrame("Criando backup de seguranca da versao anterior...", 0.40f);
     sleepMs(200);
 
     if (hasUpdate) {
-        std::remove(kCorePath);
+        if (hasCore && ValidateNro(kCorePath)) {
+            std::remove(kBackupPath);
+            std::rename(kCorePath, kBackupPath);
+        } else {
+            std::remove(kCorePath);
+        }
         fsdevCommitDevice("sdmc");
         sleepMs(150);
 

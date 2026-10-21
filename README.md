@@ -4,10 +4,10 @@
   <h1 align="center">SwitchCast</h1>
   <p align="center">
     <b>Receptor de mídia e streaming de alto desempenho com arquitetura modular para o Nintendo Switch</b><br>
-    <i>Versão 2.0.0 &bull; Desenvolvido por <b>Aleff959</b></i>
+    <i>Versão 2.1.0 &bull; Desenvolvido por <b>Aleff959</b></i>
   </p>
   <p align="center">
-    <img src="https://img.shields.io/badge/Versão-2.0.0-FF2A55?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/Versão-2.1.0-FF2A55?style=flat-square" alt="Version">
     <img src="https://img.shields.io/badge/Arquitetura-Modular_Two--Stage-00E5FF?style=flat-square" alt="Modular Architecture">
     <img src="https://img.shields.io/badge/C%2B%2B-20-7C4DFF?style=flat-square" alt="C++20">
     <img src="https://img.shields.io/badge/Renderizador-OpenGL_4.3_Core-10B981?style=flat-square" alt="OpenGL 4.3">

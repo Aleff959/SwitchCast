@@ -6,3 +6,6 @@ export DEVKITA64=/opt/devkitpro/devkitA64
 export PATH=/opt/devkitpro/devkitA64/bin:/opt/devkitpro/tools/bin:/usr/bin:$PATH
 cd "$(dirname "$0")/.." || exit 1
 make -j6 "$@"
+if [ -d "launcher" ]; then
+    make -C launcher -j6 "$@"
+fi

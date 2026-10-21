@@ -260,7 +260,7 @@ void UIEngine::HandleButtons(u64 kDown) {
     }
     if (kDown & (HidNpadButton_R | HidNpadButton_ZR)) {
         mPlayer->AdjustVolume(kVolumeStep);
-        ShowToast("Volume " + std::to_string(std::min(100, snap.volume + kVolumeStep)) + "%");
+        ShowToast("Volume " + std::to_string(std::min(150, snap.volume + kVolumeStep)) + "%");
     }
     if (kDown & HidNpadButton_Minus) {
         mPlayer->SetMute(!snap.muted);
@@ -331,7 +331,7 @@ void UIEngine::HandleTouch() {
                 break;
             }
             case GestureMode::Volume: {
-                const int level = std::clamp(mTouch.baseVolume - static_cast<int>(dy / kTouchHeight * 100.0f), 0, 100);
+                const int level = std::clamp(mTouch.baseVolume - static_cast<int>(dy / kTouchHeight * 100.0f), 0, 150);
                 if (level != snap.volume) mPlayer->SetVolume(level);
                 ShowToast("Volume " + std::to_string(level) + "%", 0.8);
                 break;
@@ -510,11 +510,14 @@ void UIEngine::RenderDashboard(const PlayerSnapshot&, bool hasWallpaper) {
     const float brandTextX = 48.0f + ox + 36.0f;
     mRenderer.DrawText(brandTextX, topY + 2.0f, "SwitchCast", 22.0f, Color::Hex(0xE2E2E6, dim), TextAlign::Left);
 
-    // Chip de Versao alinhado ao lado do nome
+    // Chip de Versao alinhado ao lado do nome (ex: 2.1.0 | Comp. 24)
+    const std::string verText = SWITCHCAST_VERSION_FULL_STR;
+    const float verTextW = mRenderer.MeasureTextWidth(verText, 11.0f);
+    const float verChipW = verTextW + 16.0f;
     const float verChipX = brandTextX + mRenderer.MeasureTextWidth("SwitchCast", 22.0f) + 12.0f;
-    mRenderer.DrawPill(verChipX, topY + 2.0f, 62.0f, 22.0f, Color::Hex(0x222630, dim));
-    mRenderer.DrawPillOutline(verChipX, topY + 2.0f, 62.0f, 22.0f, 1.0f, Color::Hex(0x35383F, dim));
-    mRenderer.DrawText(verChipX + 31.0f, topY + 7.0f, "v2.0.0", 11.0f, Color::Hex(0xA8C7FA, dim), TextAlign::Center);
+    mRenderer.DrawPill(verChipX, topY + 2.0f, verChipW, 22.0f, Color::Hex(0x222630, dim));
+    mRenderer.DrawPillOutline(verChipX, topY + 2.0f, verChipW, 22.0f, 1.0f, Color::Hex(0x35383F, dim));
+    mRenderer.DrawText(verChipX + verChipW * 0.5f, topY + 7.0f, verText, 11.0f, Color::Hex(0xA8C7FA, dim), TextAlign::Center);
 
     // Pill de resolucao / modo (Dock 1080p / Portatil 720p)
     const std::string modeStr = (mMode == DisplayMode::DOCKED_1080P) ? "Dock 1080p" : "Portatil 720p";
@@ -777,7 +780,7 @@ void UIEngine::RenderUpdateCenter() {
 
     // Titulo e Subtitulo com tipografia aumentada e alinhamento consistente
     mRenderer.DrawText(padX + 60.0f, cardY + 26.0f, "Atualizacao de sistema disponivel", 22.0f, Color::Hex(0xE2E2E6), TextAlign::Left);
-    std::string subTitle = "SwitchCast v" + (info.version.empty() ? "2.0.0" : info.version) + " - Pronto para instalar";
+    std::string subTitle = "SwitchCast v" + (info.version.empty() ? SWITCHCAST_VERSION_STR : info.version) + " - Pronto para instalar";
     mRenderer.DrawText(padX + 60.0f, cardY + 54.0f, subTitle, 14.0f, Color::Hex(0xC4C7C5), TextAlign::Left);
 
     // Chip de Categoria no Topo Direito

@@ -20,20 +20,23 @@ INCLUDES    := src src/common include third_party third_party/civetweb
 
 APP_TITLE   := SwitchCast
 APP_AUTHOR  := Aleff959
-APP_VERSION := 2.0.0
+APP_VERSION := 2.1.0
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
 # CivetWeb: somente HTTP + WebSocket, sem TLS/CGI/arquivos/Lua.
 CIVET_DEFS  := -DNO_SSL -DNO_CGI -DNO_FILES -DNO_CACHING -DUSE_WEBSOCKET
 
-CFLAGS      := -g -Wall -O3 -ffunction-sections -fdata-sections $(ARCH) $(CIVET_DEFS) $(INCLUDE) -D__SWITCH__
+CFLAGS      := -Wall -O3 -ffunction-sections -fdata-sections $(ARCH) $(CIVET_DEFS) $(INCLUDE) -D__SWITCH__
 ifeq ($(DEBUG),1)
-CFLAGS      += -DSWITCHCAST_DEBUG
-endif
-CXXFLAGS    := $(CFLAGS) -std=gnu++20 -Wno-deprecated-declarations
+CFLAGS      += -DSWITCHCAST_DEBUG -g
 ASFLAGS     := -g $(ARCH)
 LDFLAGS      = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,--gc-sections
+else
+ASFLAGS     := $(ARCH)
+LDFLAGS      = -specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -Wl,--gc-sections
+endif
+CXXFLAGS    := $(CFLAGS) -std=gnu++20 -Wno-deprecated-declarations
 
 # Ordem importa (linkagem estática). `aarch64-none-elf-pkg-config --static --libs mpv`
 # produz uma lista equivalente caso as portlibs mudem.
@@ -71,10 +74,11 @@ export APP_ICON := $(CURDIR)/icon.jpg
 export NROFLAGS += --icon=$(CURDIR)/icon.jpg
 endif
 
-ifneq ($(wildcard $(CURDIR)/romfs),)
-export ROMFS_DIR := $(CURDIR)/romfs
-export NROFLAGS += --romfsdir=$(CURDIR)/romfs
-endif
+# RomFS desacoplado na v2.1.0 para reduzir o Core de ~38MB para ~25MB
+# ifneq ($(wildcard $(CURDIR)/romfs),)
+# export ROMFS_DIR := $(CURDIR)/romfs
+# export NROFLAGS += --romfsdir=$(CURDIR)/romfs
+# endif
 
 export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
 

@@ -421,7 +421,7 @@ inline const char* GetWebRemoteHtml() {
 
         <div class="volume-row">
           <span class="volume-icon">&#128266;</span>
-          <input type="range" id="volSlider" min="0" max="100" value="80" oninput="onVolumeChange(this.value)">
+          <input type="range" id="volSlider" min="0" max="150" value="80" oninput="onVolumeChange(this.value)">
           <span id="volLabel" style="font-size:13px; font-weight:700; min-width:44px;">80%</span>
           <button id="btnMute" class="btn btn-sm" onclick="toggleMute()">Mudo</button>
         </div>

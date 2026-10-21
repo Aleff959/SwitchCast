@@ -22,10 +22,12 @@ while time.time() < deadline and not ftp:
     for port in PORTS:
         try:
             f = ftplib.FTP()
-            f.connect(SWITCH_IP, port, timeout=2)
+            f.connect(SWITCH_IP, port, timeout=5)
             f.login()
+            if f.sock:
+                f.sock.settimeout(60)
             ftp = f
-            print(f"\n[OK] Conectado via FTP na porta {port}!")
+            print(f"\n[OK] Conectado via FTP na porta {port} (timeout de 60s ativado)!")
             break
         except Exception:
             pass
@@ -45,7 +47,7 @@ try:
             pass
 
     files_to_send = [
-        ("launcher/SwitchCast.nro", "/switch/SwitchCast/SwitchCast.nro", "App Pai (Launcher)"),
+        ("SwitchCast.nro", "/switch/SwitchCast/SwitchCast.nro", "App Pai (Launcher)"),
         ("SwitchCastCore.nro", "/switch/SwitchCast/modules/SwitchCastCore.nro", "Modulo Principal (SwitchCast)")
     ]
 
