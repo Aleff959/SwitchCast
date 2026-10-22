@@ -197,6 +197,8 @@ bool OtaUpdater::CheckRemoteManifestAndDownload() {
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 180L);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchCast-OTA/" SWITCHCAST_VERSION_STR " (NintendoSwitch)");
+        curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 512 * 1024L);
+        curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, OnCurlWriteFile);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &writeCtx);
 

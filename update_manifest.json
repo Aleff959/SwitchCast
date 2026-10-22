@@ -6,7 +6,7 @@
                  "version_code":  20100,
                  "min_hos_version":  "16.0.0",
                  "download_url":  "https://github.com/Aleff959/SwitchCast/releases/download/v2.1.0/SwitchCastCore.nro",
-                 "sha256":  "4fb335981cd05a5d54a1e2ca6502e687b9d2dddda1cc2432f5837d431a0177a0",
+                 "sha256":  "ac7b018ec833e3c0207b1afd0f570d1c87ba6d5d7e38610b7dae2d1f6dc71e27",
                  "size_bytes":  30273491,
                  "changelog":  [
                                    "Audio Pro: Downmix 5.1 ITU-R BS.775 e Volume Boost 150% com Soft Limiter",

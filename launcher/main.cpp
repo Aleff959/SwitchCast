@@ -208,7 +208,8 @@ inline int OnNetProgress(void* clientp, curl_off_t dltotal, curl_off_t dlnow, cu
     auto* ctx = static_cast<NetDownloadProgress*>(clientp);
     if (!ctx || !ctx->gfx) return 0;
 
-    if (dlnow - ctx->lastRenderBytes >= 65536 || (dltotal > 0 && dlnow == dltotal)) {
+    // Atualiza a cada ~256 KB para evitar gargalo de GPU/vsync e liberar a CPU para o download
+    if (dlnow - ctx->lastRenderBytes >= 262144 || (dltotal > 0 && dlnow == dltotal)) {
         ctx->lastRenderBytes = dlnow;
         float fraction = (dltotal > 0) ? std::clamp(static_cast<float>(dlnow) / static_cast<float>(dltotal), 0.05f, 0.95f) : 0.5f;
         char buf[128];
@@ -331,10 +332,22 @@ int main(int argc, char* argv[]) {
     if (!hasUpdate && !hasCore) {
         gfx.RenderFrame("Conectando a rede para baixar o SwitchCast Core...", 0.05f);
         nifmInitialize(NifmServiceType_User);
-        socketInitializeDefault();
+
+        // Otimizacao TCP: janelas de recepcao estendidas (512 KB rx / 2 MB max)
+        SocketInitConfig sockCfg = *socketGetDefaultInitConfig();
+        sockCfg.tcp_rx_buf_size = 0x80000;      // 512 KB
+        sockCfg.tcp_rx_buf_max_size = 0x200000;  // 2 MB
+        sockCfg.num_bsd_sessions = 4;
+        if (R_FAILED(socketInitialize(&sockCfg))) {
+            socketInitializeDefault();
+        }
 
         FILE* fp = std::fopen(kUpdatePath, "wb");
         if (fp) {
+            // Buffer de escrita em RAM de 256 KB para o microSD nao pausar os ACKs TCP
+            char ioBuf[262144];
+            std::setvbuf(fp, ioBuf, _IOFBF, sizeof(ioBuf));
+
             CURL* curl = curl_easy_init();
             if (curl) {
                 NetDownloadProgress prog;
@@ -345,6 +358,12 @@ int main(int argc, char* argv[]) {
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
                 curl_easy_setopt(curl, CURLOPT_TIMEOUT, 300L);
                 curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchCast-Launcher/" SWITCHCAST_VERSION_STR " (NintendoSwitch)");
+
+                // Buffers otimizados de transferencia do libcurl
+                curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 512 * 1024L); // 512 KB
+                curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
+                curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+
                 curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](void* ptr, size_t size, size_t nmemb, void* user) -> size_t {
                     return std::fwrite(ptr, size, nmemb, static_cast<FILE*>(user));
                 });
@@ -355,6 +374,7 @@ int main(int argc, char* argv[]) {
 
                 CURLcode res = curl_easy_perform(curl);
                 curl_easy_cleanup(curl);
+                std::fflush(fp);
                 std::fclose(fp);
 
                 if (res != CURLE_OK) {
