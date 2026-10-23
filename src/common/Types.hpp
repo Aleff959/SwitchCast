@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#define SWITCHCAST_VERSION_STR       "2.1.0"
-#define SWITCHCAST_VERSION_CODE      20100
-#define SWITCHCAST_BUILD_NUM         24
-#define SWITCHCAST_VERSION_FULL_STR  "2.1.0 | Comp. 24"
+#define SWITCHCAST_VERSION_STR       "2.3.0"
+#define SWITCHCAST_VERSION_CODE      20300
+#define SWITCHCAST_BUILD_NUM         29
+#define SWITCHCAST_VERSION_FULL_STR  "2.3.0 | Comp. 29"
 
 namespace SwitchCast {
 

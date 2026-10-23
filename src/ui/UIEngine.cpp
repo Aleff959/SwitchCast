@@ -164,17 +164,30 @@ void UIEngine::Update(u64 kDown, PadState&) {
     mLastTime = now;
     mPulseTimer += mDelta;
 
+    mPlayer->PumpEvents();
+    DrainNetworkCommands();
+    HandleButtons(kDown);
+    HandleTouch();
+
+    // Interpolação suave e cadenciada (0.68s = ~41 quadros a 60 FPS)
+    // Limita o passo por frame a 1/60s para nunca pular quadros ao sair de 15 FPS para 60 FPS
+    const float frameStep = std::min(mDelta, 1.0f / 60.0f) / 0.68f;
+    if (mMenuOpen) {
+        mMenuAnimProgress = std::min(1.0f, mMenuAnimProgress + frameStep);
+    } else {
+        mMenuAnimProgress = std::max(0.0f, mMenuAnimProgress - frameStep);
+    }
+
+    if (mMenuAnimProgress > 0.05f) {
+        UpdateDvdPhysics(std::min(mDelta, 1.0f / 30.0f));
+    }
+
     auto& updater = Updater::OtaUpdater::Instance();
     if (updater.IsDownloading() || updater.IsInstalling()) {
         mCurrentScreen = ScreenView::UpdateCenter;
     } else if (updater.HasUpdateReady() && !mUpdateDialogDismissed) {
         mCurrentScreen = ScreenView::UpdateCenter;
     }
-
-    mPlayer->PumpEvents();
-    DrainNetworkCommands();
-    HandleButtons(kDown);
-    HandleTouch();
 
     const PlayerSnapshot snap = mPlayer->Snapshot();
     mBurnIn.Update(mDelta, snap.state != PlaybackState::Idle);
@@ -220,6 +233,14 @@ void UIEngine::HandleButtons(u64 kDown) {
 
     auto& updater = Updater::OtaUpdater::Instance();
 
+    // Abas Sobre ou Como Usar (Retorno para Dashboard)
+    if (mCurrentScreen == ScreenView::About || mCurrentScreen == ScreenView::HowToUse) {
+        if (kDown & (HidNpadButton_B | HidNpadButton_Y | HidNpadButton_X | HidNpadButton_A)) {
+            mCurrentScreen = ScreenView::Dashboard;
+        }
+        return;
+    }
+
     // Central de Atualização (Aba dedicada em tela preta)
     if (mCurrentScreen == ScreenView::UpdateCenter) {
         if (updater.IsInstalling()) {
@@ -244,15 +265,60 @@ void UIEngine::HandleButtons(u64 kDown) {
         return;
     }
 
-    // Se estiver no Dashboard e houver atualização pronta/baixando, [X] reabre a Central
-    if ((updater.HasUpdateReady() || updater.IsDownloading()) && (kDown & HidNpadButton_X)) {
-        mCurrentScreen = ScreenView::UpdateCenter;
-        mUpdateDialogDismissed = false;
-        return;
-    }
-
     const PlayerSnapshot snap = mPlayer->Snapshot();
     const bool hasMedia = snap.state != PlaybackState::Idle;
+
+    // Se estiver no Dashboard sem mídia
+    if (!hasMedia) {
+        // (-) abre ou fecha a gaveta lateral
+        if (kDown & HidNpadButton_Minus) {
+            mMenuOpen = !mMenuOpen;
+            return;
+        }
+
+        if (mMenuOpen) {
+            if (kDown & HidNpadButton_L) {
+                mActiveDrawerTab = static_cast<DrawerTab>((static_cast<int>(mActiveDrawerTab) + 2) % 3);
+                return;
+            }
+            if (kDown & HidNpadButton_R) {
+                mActiveDrawerTab = static_cast<DrawerTab>((static_cast<int>(mActiveDrawerTab) + 1) % 3);
+                return;
+            }
+            if (kDown & HidNpadButton_B) {
+                mMenuOpen = false;
+                return;
+            }
+            if (kDown & HidNpadButton_X) {
+                if (updater.HasUpdateReady() || updater.IsDownloading()) {
+                    mCurrentScreen = ScreenView::UpdateCenter;
+                    mUpdateDialogDismissed = false;
+                    return;
+                }
+            }
+            return;
+        }
+
+        // Quando o menu está fechado:
+        // [X] abre Central de Atualização se houver update pendente; senão abre gaveta em Como Usar
+        if (kDown & HidNpadButton_X) {
+            if (updater.HasUpdateReady() || updater.IsDownloading()) {
+                mCurrentScreen = ScreenView::UpdateCenter;
+                mUpdateDialogDismissed = false;
+            } else {
+                mMenuOpen = true;
+                mActiveDrawerTab = DrawerTab::HowToUse;
+            }
+            return;
+        }
+
+        // [Y] abre gaveta na aba Sobre
+        if (kDown & HidNpadButton_Y) {
+            mMenuOpen = true;
+            mActiveDrawerTab = DrawerTab::About;
+            return;
+        }
+    }
 
     if (kDown & (HidNpadButton_L | HidNpadButton_ZL)) {
         mPlayer->AdjustVolume(-kVolumeStep);
@@ -391,6 +457,61 @@ void UIEngine::HandleTouch() {
             return;
         }
 
+        if (mCurrentScreen == ScreenView::About || mCurrentScreen == ScreenView::HowToUse) {
+            mCurrentScreen = ScreenView::Dashboard;
+            mTouch = Touch{};
+            return;
+        }
+
+        if (mCurrentScreen == ScreenView::Dashboard && !mPlayer->HasMedia()) {
+            const float s = (mWidth >= 1920) ? 1.5f : 1.0f;
+
+            // 1. Toque no Botão Morph (canto superior esquerdo)
+            if (mTouch.startX < 88.0f * s && mTouch.startY < 76.0f * s) {
+                mMenuOpen = !mMenuOpen;
+                mTouch = Touch{};
+                return;
+            }
+
+            // 2. Se a Gaveta Lateral estiver aberta
+            if (mMenuOpen) {
+                const float drawerW = 480.0f * s;
+                // Toque fora da gaveta fecha o menu
+                if (mTouch.startX > drawerW) {
+                    mMenuOpen = false;
+                    mTouch = Touch{};
+                    return;
+                }
+
+                // Toque no cabeçalho da gaveta (abas ou botão fechar X)
+                if (mTouch.startY >= 14.0f * s && mTouch.startY <= 72.0f * s) {
+                    // Botão fechar [X] no canto direito do cabeçalho da gaveta
+                    if (mTouch.startX >= drawerW - 58.0f * s) {
+                        mMenuOpen = false;
+                        mTouch = Touch{};
+                        return;
+                    }
+
+                    const float tabStartX = 84.0f * s;
+                    const float tabAreaW = drawerW - tabStartX - 62.0f * s;
+                    const float tabColW = tabAreaW / 3.0f;
+
+                    if (mTouch.startX >= tabStartX && mTouch.startX < tabStartX + tabColW) {
+                        mActiveDrawerTab = DrawerTab::HowToUse;
+                    } else if (mTouch.startX >= tabStartX + tabColW && mTouch.startX < tabStartX + 2.0f * tabColW) {
+                        mActiveDrawerTab = DrawerTab::WhatsNew;
+                    } else if (mTouch.startX >= tabStartX + 2.0f * tabColW && mTouch.startX < drawerW - 58.0f * s) {
+                        mActiveDrawerTab = DrawerTab::About;
+                    }
+                    mTouch = Touch{};
+                    return;
+                }
+
+                mTouch = Touch{};
+                return;
+            }
+        }
+
         // Toque único: alterna a barra de controle.
         if (mPlayer->HasMedia()) mOsdVisibleUntil = (mOsdVisibleUntil > now) ? 0 : now + kOsdTimeoutSec;
     } else if (mTouch.mode == GestureMode::Scrub && mScrubbing) {
@@ -427,13 +548,36 @@ void UIEngine::Render() {
         return;
     }
 
+    if (mCurrentScreen == ScreenView::About) {
+        // TELA DEDICADA SOBRE E DADOS TÉCNICOS
+        eglSwapInterval(mDisplay, 4);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        RenderAbout();
+
+        eglSwapBuffers(mDisplay, mSurface);
+        return;
+    }
+
+    if (mCurrentScreen == ScreenView::HowToUse) {
+        // TELA DEDICADA COMO USAR
+        eglSwapInterval(mDisplay, 4);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        RenderHowToUse();
+
+        eglSwapBuffers(mDisplay, mSurface);
+        return;
+    }
+
     const PlayerSnapshot snap = mPlayer->Snapshot();
     const bool hasMedia = (snap.state != PlaybackState::Idle);
     const bool isWallpaper = mPlayer->IsWallpaperActive();
 
-    // Com mídia ou wallpaper animado em segundo plano: vsync a 60 fps.
-    // Sem mídia ou wallpaper: 15 fps bastam e economizam bateria.
-    const int interval = (hasMedia || isWallpaper) ? 1 : 4;
+    // Mantém 60 FPS no Dashboard para fluidez contínua dos vitrais, pulso de Play, morph e símbolos
+    const int interval = 1;
     if (interval != mSwapInterval) {
         eglSwapInterval(mDisplay, interval);
         mSwapInterval = interval;
@@ -479,173 +623,852 @@ void UIEngine::Render() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Funções Auxiliares: Sombra Profunda, Morph Button, DVD Bouncing e Gaveta
+// ---------------------------------------------------------------------------
+static void DrawShadowedText(Renderer2D& r, float x, float y, const std::string& text,
+                             float size, Color color, TextAlign align = TextAlign::Left) {
+    r.DrawText(x + 1.5f, y + 2.5f, text, size, Color::Rgba(0, 0, 0, 240), align);
+    r.DrawText(x, y, text, size, color, align);
+}
+
+void UIEngine::DrawMorphSwitchButton(float x, float y, float rawT, float s, float dim) {
+    // Curva SmoothStep (ease-in-out) para que a transformação das 3 linhas no Switch seja bem visível
+    const float t = rawT * rawT * (3.0f - 2.0f * rawT);
+    auto lerp = [](float a, float b, float f) { return a + (b - a) * f; };
+    auto lerpColor = [&](Color c0, Color c1, float f) {
+        return Color{
+            lerp(c0.r, c1.r, f),
+            lerp(c0.g, c1.g, f),
+            lerp(c0.b, c1.b, f),
+            lerp(c0.a, c1.a, f)
+        };
+    };
+
+    const float btnW = 56.0f * s;
+    const float btnH = 48.0f * s;
+    const float cx = x + btnW * 0.5f;
+    const float cy = y + btnH * 0.5f;
+
+    // Sombra preta profunda + Fundo do botão + Borda sólida #383D48
+    mRenderer.DrawRoundedRect(x + 2.0f * s, y + 4.0f * s, btnW, btnH, 14.0f * s, Color::Rgba(0, 0, 0, static_cast<uint8_t>(230 * dim)));
+    mRenderer.DrawRoundedRect(x, y, btnW, btnH, 14.0f * s, Color::Rgba(0, 0, 0, static_cast<uint8_t>(230 * dim)));
+    mRenderer.DrawRoundedRectOutline(x, y, btnW, btnH, 14.0f * s, 1.5f * s, Color::Hex(0x383D48, dim));
+
+    const Color grayBar = Color::Hex(0xD4D4D8, dim);
+    const Color blueJoy = Color::Hex(0x00C3E3, dim);
+    const Color redJoy  = Color::Hex(0xFF3C28, dim);
+    const Color oledScr = Color::Hex(0x0B0D11, dim);
+
+    // --- LINHA 1 (Topo -> Joy-Con Esquerdo Azul) ---
+    const float b1W = lerp(22.0f, 7.0f, t) * s;
+    const float b1H = lerp(2.8f, 22.0f, t) * s;
+    const float b1X = cx + lerp(0.0f, -10.5f, t) * s - b1W * 0.5f;
+    const float b1Y = cy + lerp(-7.0f, 0.0f, t) * s - b1H * 0.5f;
+    const float b1Rad = lerp(1.4f, 3.5f, t) * s;
+    mRenderer.DrawRoundedRect(b1X + 1.0f * s, b1Y + 2.0f * s, b1W, b1H, b1Rad, Color::Rgba(0, 0, 0, static_cast<uint8_t>(220 * dim)));
+    mRenderer.DrawRoundedRect(b1X, b1Y, b1W, b1H, b1Rad, lerpColor(grayBar, blueJoy, t));
+    if (t > 0.25f) {
+        mRenderer.DrawCircle(b1X + b1W * 0.5f, b1Y + 5.0f * s, 1.8f * t * s, Color::Hex(0x090B0E, t * dim));
+    }
+
+    // --- LINHA 2 (Meio -> Tela Central do Switch) ---
+    const float b2W = lerp(22.0f, 12.0f, t) * s;
+    const float b2H = lerp(2.8f, 22.0f, t) * s;
+    const float b2X = cx - b2W * 0.5f;
+    const float b2Y = cy - b2H * 0.5f;
+    mRenderer.DrawRoundedRect(b2X + 1.0f * s, b2Y + 2.0f * s, b2W, b2H, 2.0f * s, Color::Rgba(0, 0, 0, static_cast<uint8_t>(220 * dim)));
+    mRenderer.DrawRoundedRect(b2X, b2Y, b2W, b2H, 2.0f * s, lerpColor(grayBar, oledScr, t));
+    if (t > 0.1f) {
+        mRenderer.DrawRoundedRectOutline(b2X, b2Y, b2W, b2H, 2.0f * s, 1.2f * s, Color::Hex(0x383D48, t * dim));
+    }
+
+    // --- LINHA 3 (Base -> Joy-Con Direito Vermelho) ---
+    const float b3W = lerp(22.0f, 7.0f, t) * s;
+    const float b3H = lerp(2.8f, 22.0f, t) * s;
+    const float b3X = cx + lerp(0.0f, +10.5f, t) * s - b3W * 0.5f;
+    const float b3Y = cy + lerp(+7.0f, 0.0f, t) * s - b3H * 0.5f;
+    const float b3Rad = lerp(1.4f, 3.5f, t) * s;
+    mRenderer.DrawRoundedRect(b3X + 1.0f * s, b3Y + 2.0f * s, b3W, b3H, b3Rad, Color::Rgba(0, 0, 0, static_cast<uint8_t>(220 * dim)));
+    mRenderer.DrawRoundedRect(b3X, b3Y, b3W, b3H, b3Rad, lerpColor(grayBar, redJoy, t));
+    if (t > 0.25f) {
+        mRenderer.DrawCircle(b3X + b3W * 0.5f, b3Y + b3H - 5.0f * s, 1.8f * t * s, Color::Hex(0x090B0E, t * dim));
+    }
+}
+
+void UIEngine::UpdateDvdPhysics(float delta) {
+    const float s = (mWidth >= 1920) ? 1.5f : 1.0f;
+    const float symRadius = 28.0f * s;
+    const float minX = 488.0f * s + symRadius;
+    const float maxX = static_cast<float>(mWidth) - symRadius - 14.0f * s;
+    const float minY = symRadius + 16.0f * s;
+    const float maxY = static_cast<float>(mHeight) - symRadius - 16.0f * s;
+
+    for (size_t i = 0; i < mDvdSymbols.size(); ++i) {
+        auto& sym = mDvdSymbols[i];
+        sym.x += sym.vx * delta;
+        sym.y += sym.vy * delta;
+
+        // Amortecimento suave da escala elástica de volta para 1.0
+        sym.scale += (1.0f - sym.scale) * std::min(1.0f, delta * 8.0f);
+
+        bool bounced = false;
+        if (sym.x <= minX) {
+            sym.x = minX;
+            sym.vx = std::fabs(sym.vx);
+            bounced = true;
+        } else if (sym.x >= maxX) {
+            sym.x = maxX;
+            sym.vx = -std::fabs(sym.vx);
+            bounced = true;
+        }
+
+        if (sym.y <= minY) {
+            sym.y = minY;
+            sym.vy = std::fabs(sym.vy);
+            bounced = true;
+        } else if (sym.y >= maxY) {
+            sym.y = maxY;
+            sym.vy = -std::fabs(sym.vy);
+            bounced = true;
+        }
+
+        if (bounced) {
+            sym.colorIdx = (sym.colorIdx + 1) % 4;
+            sym.scale = 1.25f;
+        }
+    }
+
+    // Colisão elástica entre símbolos
+    for (size_t i = 0; i < mDvdSymbols.size(); ++i) {
+        for (size_t j = i + 1; j < mDvdSymbols.size(); ++j) {
+            auto& a = mDvdSymbols[i];
+            auto& b = mDvdSymbols[j];
+
+            float dx = b.x - a.x;
+            float dy = b.y - a.y;
+            float dist = std::sqrt(dx * dx + dy * dy);
+            float minDist = (symRadius * a.scale + symRadius * b.scale);
+
+            if (dist > 0.001f && dist < minDist) {
+                float nx = dx / dist;
+                float ny = dy / dist;
+                float overlap = (minDist - dist) * 0.5f;
+
+                a.x -= nx * overlap;
+                a.y -= ny * overlap;
+                b.x += nx * overlap;
+                b.y += ny * overlap;
+
+                float dvx = a.vx - b.vx;
+                float dvy = a.vy - b.vy;
+                float dot = dvx * nx + dvy * ny;
+
+                if (dot > 0.0f) {
+                    a.vx -= dot * nx;
+                    a.vy -= dot * ny;
+                    b.vx += dot * nx;
+                    b.vy += dot * ny;
+
+                    a.colorIdx = (a.colorIdx + 1) % 4;
+                    b.colorIdx = (b.colorIdx + 1) % 4;
+                    a.scale = 1.28f;
+                    b.scale = 1.28f;
+                }
+            }
+        }
+    }
+}
+
+void UIEngine::RenderDvdSymbols(float s, float alpha) {
+    if (alpha <= 0.01f) return;
+
+    // 1. Malha de micro-símbolos em movimento diagonal contínuo no fundo (moving-symbols-backdrop)
+    {
+        const float spacing = 64.0f * s;
+        const float driftX = std::fmod(mPulseTimer * 36.0f * s, spacing);
+        const float driftY = -std::fmod(mPulseTimer * 36.0f * s, spacing);
+        const char gridSyms[4] = { 'D', 'C', 'S', 'T' };
+
+        int rowIdx = 0;
+        for (float baseY = -spacing; baseY < static_cast<float>(mHeight) + spacing; baseY += spacing, ++rowIdx) {
+            float curY = baseY + driftY;
+            if (curY < -20.0f || curY > static_cast<float>(mHeight) + 20.0f) continue;
+
+            float startX = (rowIdx % 2 == 1) ? (spacing * 0.5f) : 0.0f;
+            int colIdx = 0;
+            for (float baseX = -spacing + startX; baseX < static_cast<float>(mWidth) + spacing; baseX += spacing, ++colIdx) {
+                float curX = baseX + driftX;
+                if (curX < 460.0f * s || curX > static_cast<float>(mWidth) + 20.0f) continue;
+
+                char sym = gridSyms[(rowIdx * 2 + colIdx) % 4];
+                Color gCol = Color::Hex(0xFFFFFF, 0.22f * alpha);
+                if ((rowIdx + colIdx) % 3 == 0) {
+                    gCol = Color::Hex(0x00C3E3, 0.32f * alpha);
+                } else if ((rowIdx + colIdx) % 3 == 1) {
+                    gCol = Color::Hex(0xFF3C28, 0.30f * alpha);
+                }
+                mRenderer.DrawPlayStationSymbol(sym, curX, curY, 18.0f * s, gCol, true);
+            }
+        }
+    }
+
+    // 2. Os 4 símbolos maiores estilo DVD Player quicando nos cantos e entre si
+    const Color colors[4] = {
+        Color::Hex(0x00C3E3, alpha), // Azul Joy-Con
+        Color::Hex(0xFF3C28, alpha), // Vermelho Joy-Con
+        Color::Hex(0xE4E4E7, alpha), // Branco / Prata
+        Color::Hex(0x38BDF8, alpha)  // Sky Blue
+    };
+
+    const char shapeSymbols[4] = { 'D', 'C', 'S', 'T' };
+
+    for (const auto& sym : mDvdSymbols) {
+        const Color col = colors[sym.colorIdx % 4];
+        const float baseSize = 48.0f * s * sym.scale;
+
+        // Sombra preta obrigatória (#000000)
+        mRenderer.DrawPlayStationSymbol(shapeSymbols[sym.shapeType % 4],
+                                       sym.x, sym.y, baseSize, col, true);
+    }
+}
+
+void UIEngine::RenderDrawer(float s, float dim) {
+    if (mMenuAnimProgress <= 0.001f) return;
+
+    // Curva Cubic Ease-Out suave para o deslizamento da gaveta
+    const float inv = 1.0f - mMenuAnimProgress;
+    const float easedSlide = 1.0f - (inv * inv * inv);
+
+    const float drawerW = 480.0f * s;
+    const float drawerX = -drawerW * (1.0f - easedSlide);
+
+    // Sombra preta projetada à direita da gaveta + Fundo rgba(10, 12, 16, 0.95)
+    mRenderer.DrawRect(drawerX + drawerW, 0.0f, 28.0f * s, static_cast<float>(mHeight),
+                       Color::Rgba(0, 0, 0, static_cast<uint8_t>(190 * mMenuAnimProgress * dim)));
+    mRenderer.DrawRect(drawerX, 0.0f, drawerW, static_cast<float>(mHeight),
+                       Color::Rgba(10, 12, 16, static_cast<uint8_t>(244 * dim)));
+
+    // Borda direita sólida #383D48
+    mRenderer.DrawRect(drawerX + drawerW - 1.5f * s, 0.0f, 1.5f * s, static_cast<float>(mHeight),
+                       Color::Hex(0x383D48, dim));
+
+    // Container das 3 abas em linha única no topo + Botão Fechar [X]
+    const float headerY = 18.0f * s;
+    const float tabGroupX = drawerX + 84.0f * s;
+    const float closeBtnSize = 38.0f * s;
+    const float closeBtnX = drawerX + drawerW - 18.0f * s - closeBtnSize;
+    const float tabGroupW = closeBtnX - tabGroupX - 10.0f * s;
+    const float tabGroupH = 42.0f * s;
+
+    // Caixa escura envolvente das 3 abas (bg-black/80 border #383D48)
+    mRenderer.DrawRoundedRect(tabGroupX, headerY, tabGroupW, tabGroupH, 12.0f * s, Color::Rgba(0, 0, 0, static_cast<uint8_t>(210 * dim)));
+    mRenderer.DrawRoundedRectOutline(tabGroupX, headerY, tabGroupW, tabGroupH, 12.0f * s, 1.0f * s, Color::Hex(0x383D48, dim));
+
+    struct TabItem {
+        const char* name;
+        DrawerTab tab;
+    };
+    const TabItem tabs[3] = {
+        { "Como Usar", DrawerTab::HowToUse },
+        { "Novidades", DrawerTab::WhatsNew },
+        { "Sobre",     DrawerTab::About }
+    };
+
+    const float innerPad = 4.0f * s;
+    const float tabGap = 4.0f * s;
+    const float tabW = (tabGroupW - 2.0f * innerPad - 2.0f * tabGap) / 3.0f;
+    const float tabH = tabGroupH - 2.0f * innerPad;
+    const float tabFont = 16.0f * s;
+
+    for (int i = 0; i < 3; ++i) {
+        const float tx = tabGroupX + innerPad + i * (tabW + tabGap);
+        const float ty = headerY + innerPad;
+        const bool isActive = (mActiveDrawerTab == tabs[i].tab);
+
+        if (isActive) {
+            mRenderer.DrawRoundedRect(tx, ty, tabW, tabH, 8.0f * s, Color::Hex(0x1F232B, dim));
+            mRenderer.DrawRoundedRectOutline(tx, ty, tabW, tabH, 8.0f * s, 1.2f * s, Color::Hex(0x383D48, dim));
+            DrawShadowedText(mRenderer, tx + tabW * 0.5f, ty + 8.0f * s, tabs[i].name, tabFont, Color::Hex(0xF4F4F5, dim), TextAlign::Center);
+        } else {
+            DrawShadowedText(mRenderer, tx + tabW * 0.5f, ty + 8.0f * s, tabs[i].name, tabFont, Color::Hex(0xA1A1AA, dim), TextAlign::Center);
+        }
+    }
+
+    // Botão Fechar [X] no topo direito da gaveta
+    mRenderer.DrawRoundedRect(closeBtnX, headerY + 2.0f * s, closeBtnSize, closeBtnSize, 10.0f * s, Color::Rgba(0, 0, 0, static_cast<uint8_t>(210 * dim)));
+    mRenderer.DrawRoundedRectOutline(closeBtnX, headerY + 2.0f * s, closeBtnSize, closeBtnSize, 10.0f * s, 1.0f * s, Color::Hex(0x383D48, dim));
+    DrawShadowedText(mRenderer, closeBtnX + closeBtnSize * 0.5f, headerY + 10.0f * s, "X", 16.0f * s, Color::Hex(0xD4D4D8, dim), TextAlign::Center);
+
+    // Linha divisória abaixo do cabeçalho (#2A2E38)
+    const float divY = headerY + tabGroupH + 14.0f * s;
+    mRenderer.DrawLine(drawerX + 84.0f * s, divY, drawerX + drawerW - 18.0f * s, divY, 1.0f * s, Color::Hex(0x2A2E38, dim));
+
+    // Área de conteúdo (alinhada com pl-16 como no protótipo)
+    const float cardX = drawerX + 84.0f * s;
+    const float cardW = drawerW - 84.0f * s - 18.0f * s;
+    float curY = divY + 18.0f * s;
+
+    auto drawDrawerCard = [&](float y, float h, uint32_t borderHex) {
+        mRenderer.DrawRoundedRect(cardX + 2.0f * s, y + 4.0f * s, cardW, h, 14.0f * s, Color::Rgba(0, 0, 0, static_cast<uint8_t>(225 * dim)));
+        mRenderer.DrawRoundedRect(cardX, y, cardW, h, 14.0f * s, Color::Rgba(0, 0, 0, static_cast<uint8_t>(165 * dim)));
+        mRenderer.DrawRoundedRectOutline(cardX, y, cardW, h, 14.0f * s, 1.2f * s, Color::Hex(borderHex, dim));
+    };
+
+    if (mActiveDrawerTab == DrawerTab::HowToUse) {
+        const float ch = 92.0f * s;
+        const float gap = 14.0f * s;
+
+        // Card 1: No Celular
+        drawDrawerCard(curY, ch, 0x383D48);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "No Celular:", 17.5f * s, Color::Hex(0x00C3E3, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 38.0f * s, "Abra o Web Video Caster ou BubbleUPnP", 15.5f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 60.0f * s, "e selecione o SwitchCast na rede.", 15.5f * s, Color::Hex(0xE4E4E7, dim));
+        curY += ch + gap;
+
+        // Card 2: No PC/Navegador
+        const std::string ip = Platform::GetLocalIp();
+        const std::string pcLine = ip.empty() ? "Digite o IP do Switch na porta :8080" : ("Acesse http://" + ip + ":8080");
+        drawDrawerCard(curY, ch, 0x383D48);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "No PC/Navegador:", 17.5f * s, Color::Hex(0xF4F4F5, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 38.0f * s, pcLine, 15.5f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 60.0f * s, "para o Web Remote com controle total.", 15.5f * s, Color::Hex(0xE4E4E7, dim));
+        curY += ch + gap;
+
+        // Card 3: No Console
+        drawDrawerCard(curY, ch, 0x383D48);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "No Console:", 17.5f * s, Color::Hex(0xFF3C28, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 38.0f * s, "(A) Pausa  |  (X) Audio  |  (Y) Legendas", 15.5f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 60.0f * s, "(L / R) Ajuste de Volume ate 150%.", 15.5f * s, Color::Hex(0xE4E4E7, dim));
+    } else if (mActiveDrawerTab == DrawerTab::WhatsNew) {
+        DrawShadowedText(mRenderer, cardX + 2.0f * s, curY, "COMPILACAO " + std::to_string(SWITCHCAST_BUILD_NUM) + " (HOJE)", 14.5f * s, Color::Hex(0xA1A1AA, dim));
+        curY += 26.0f * s;
+
+        const float ch = 84.0f * s;
+        const float gap = 12.0f * s;
+
+        // Novidade 1
+        drawDrawerCard(curY, ch, 0x383D48);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Audio Pro 5.1:", 17.0f * s, Color::Hex(0x00C3E3, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "Downmix BS.775 eliminando colisao", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "acustica surround.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        curY += ch + gap;
+
+        // Novidade 2
+        drawDrawerCard(curY, ch, 0x383D48);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Volume Boost 150%:", 17.0f * s, Color::Hex(0xFF3C28, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "Teto elevado com Soft Limiter", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "anti-distorcao.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        curY += ch + gap;
+
+        // Novidade 3
+        drawDrawerCard(curY, ch, 0x383D48);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Morph Real:", 17.0f * s, Color::Hex(0xF4F4F5, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "As 3 linhas do menu se transformam", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "fisicamente no Switch.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+    } else if (mActiveDrawerTab == DrawerTab::About) {
+        const float ch = 78.0f * s;
+        const float gap = 14.0f * s;
+
+        // Card 1: Software • Versão
+        drawDrawerCard(curY, ch, 0x2A2E38);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "Software  |  Versao", 14.5f * s, Color::Hex(0xA1A1AA, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 40.0f * s, "SwitchCast Core", 18.0f * s, Color::Hex(0xF4F4F5, dim));
+        const float pillW = 76.0f * s;
+        const float pillH = 26.0f * s;
+        const float pillX = cardX + cardW - pillW - 16.0f * s;
+        const float pillY = curY + 37.0f * s;
+        mRenderer.DrawPill(pillX, pillY, pillW, pillH, Color::Rgba(0, 0, 0, static_cast<uint8_t>(185 * dim)));
+        mRenderer.DrawPillOutline(pillX, pillY, pillW, pillH, 1.0f * s, Color::Hex(0x383D48, dim));
+        DrawShadowedText(mRenderer, pillX + pillW * 0.5f, pillY + 4.5f * s, "v" SWITCHCAST_VERSION_STR, 14.5f * s, Color::Hex(0x00C3E3, dim), TextAlign::Center);
+        curY += ch + gap;
+
+        // Card 2: Ambiente • Compilação
+        drawDrawerCard(curY, ch, 0x2A2E38);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "Ambiente  |  Compilacao", 14.5f * s, Color::Hex(0xA1A1AA, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 40.0f * s, "Atmosph\xC3\xA8re CFW  |  Comp. " + std::to_string(SWITCHCAST_BUILD_NUM), 17.5f * s, Color::Hex(0xE4E4E7, dim));
+        curY += ch + gap;
+
+        // Card 3: Autor & Repositório
+        drawDrawerCard(curY, ch, 0x2A2E38);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "Autor & Repositorio", 14.5f * s, Color::Hex(0xA1A1AA, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 40.0f * s, "Aleff959  |  GitHub Oficial", 17.5f * s, Color::Hex(0xE4E4E7, dim));
+    }
+
+    // Rodapé da Gaveta (y = mHeight - 46.0f * s)
+    const float footY = static_cast<float>(mHeight) - 46.0f * s;
+    mRenderer.DrawLine(drawerX + 84.0f * s, footY - 10.0f * s,
+                       drawerX + drawerW - 18.0f * s, footY - 10.0f * s,
+                       1.0f * s, Color::Hex(0x2A2E38, dim));
+
+    DrawShadowedText(mRenderer, drawerX + 84.0f * s, footY + 4.0f * s,
+                     "v" SWITCHCAST_VERSION_STR, 16.0f * s, Color::Hex(0xA1A1AA, dim), TextAlign::Left);
+
+    DrawShadowedText(mRenderer, drawerX + drawerW - 18.0f * s, footY + 4.0f * s,
+                     "Comp. " + std::to_string(SWITCHCAST_BUILD_NUM), 16.0f * s, Color::Hex(0x00C3E3, dim), TextAlign::Right);
+}
+
 void UIEngine::RenderDashboard(const PlayerSnapshot&, bool hasWallpaper) {
     mRenderer.BeginFrame(mWidth, mHeight);
-
-    // Se houver wallpaper animado em segundo plano, aplica filtro escuro suave
-    // para contraste e legibilidade impecaveis
-    if (hasWallpaper) {
-        mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight),
-                           Color::Rgba(11, 14, 20, 160));
-    } else {
-        // Fundo OLED escuro limpo (#0B0E14)
-        mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight),
-                           Color::Hex(0x0B0E14, 1.0f));
-    }
 
     const float ox = mBurnIn.OffsetX();
     const float oy = mBurnIn.OffsetY();
     const float dim = mBurnIn.DimmingFactor();
+    const float s = (mWidth >= 1920) ? 1.5f : 1.0f;
 
-    // 1. Top App Bar (Discreta, elegante e perfeitamente alinhada)
-    const float topY = 24.0f + oy;
+    // Quando o menu abre, os elementos nítidos da cena traseira dão lugar a passes desfocados (Gaussian Blur simulado)
+    const float blurAmount = mMenuAnimProgress;
+    const float bgBlurDim = dim * (1.0f - 0.25f * blurAmount);
 
-    // Avatar Icon + Titulo SwitchCast
-    const float brandIconX = 48.0f + ox + 14.0f;
-    const float brandIconY = topY + 12.0f;
-    mRenderer.DrawCircle(brandIconX, brandIconY, 14.0f, Color::Hex(0x004A77, dim));
-    // Ponto vetorial de transmissao
-    mRenderer.DrawCircle(brandIconX, brandIconY, 4.0f, Color::Hex(0xA8C7FA, dim));
-
-    const float brandTextX = 48.0f + ox + 36.0f;
-    mRenderer.DrawText(brandTextX, topY + 2.0f, "SwitchCast", 22.0f, Color::Hex(0xE2E2E6, dim), TextAlign::Left);
-
-    // Chip de Versao alinhado ao lado do nome (ex: 2.1.0 | Comp. 24)
-    const std::string verText = SWITCHCAST_VERSION_FULL_STR;
-    const float verTextW = mRenderer.MeasureTextWidth(verText, 11.0f);
-    const float verChipW = verTextW + 16.0f;
-    const float verChipX = brandTextX + mRenderer.MeasureTextWidth("SwitchCast", 22.0f) + 12.0f;
-    mRenderer.DrawPill(verChipX, topY + 2.0f, verChipW, 22.0f, Color::Hex(0x222630, dim));
-    mRenderer.DrawPillOutline(verChipX, topY + 2.0f, verChipW, 22.0f, 1.0f, Color::Hex(0x35383F, dim));
-    mRenderer.DrawText(verChipX + verChipW * 0.5f, topY + 7.0f, verText, 11.0f, Color::Hex(0xA8C7FA, dim), TextAlign::Center);
-
-    // Pill de resolucao / modo (Dock 1080p / Portatil 720p)
-    const std::string modeStr = (mMode == DisplayMode::DOCKED_1080P) ? "Dock 1080p" : "Portatil 720p";
-    const float badgeW = 124.0f;
-    const float badgeX = mWidth - badgeW - 48.0f + ox;
-    mRenderer.DrawPill(badgeX, topY, badgeW, 26.0f, Color::Hex(0x1D2024, dim));
-    mRenderer.DrawPillOutline(badgeX, topY, badgeW, 26.0f, 1.0f, Color::Hex(0x35383F, dim));
-    mRenderer.DrawText(badgeX + badgeW * 0.5f, topY + 7.0f, modeStr, 12.0f, Color::Hex(0xC4C7C5, dim), TextAlign::Center);
-
-    // Chip de Notificacao de Atualizacao (se houver update disponivel ou em download)
-    auto& updater = Updater::OtaUpdater::Instance();
-    if (updater.HasUpdateReady() || updater.IsDownloading()) {
-        const std::string otaNotice = updater.IsDownloading()
-            ? "[ (X) Baixando atualizacao... ]"
-            : "[ (X) Atualizacao disponivel ]";
-        const float otaW = mRenderer.MeasureTextWidth(otaNotice, 12.0f) + 24.0f;
-        const float otaX = badgeX - otaW - 12.0f;
-        mRenderer.DrawPill(otaX, topY, otaW, 26.0f, Color::Hex(0x004A77, dim));
-        mRenderer.DrawPillOutline(otaX, topY, otaW, 26.0f, 1.0f, Color::Hex(0x2D73A8, dim));
-        mRenderer.DrawText(otaX + otaW * 0.5f, topY + 7.0f, otaNotice, 12.0f, Color::Hex(0xC2E7FF, dim), TextAlign::Center);
+    // =========================================================================
+    // PLANO 1 (Traseiro): Tela Base 90% Preto / 10% Cinza (#0D0E12)
+    // =========================================================================
+    if (hasWallpaper) {
+        mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight),
+                           Color::Rgba(13, 14, 18, 175));
     } else {
-        const AppletType at = appletGetAppletType();
-        if (at != AppletType_Application && at != AppletType_SystemApplication) {
-            const std::string appletNotice = "Modo Album (16MB) - Segure R ao abrir um jogo para 128MB";
-            const float noticeW = mRenderer.MeasureTextWidth(appletNotice, 12.0f) + 24.0f;
-            const float noticeX = badgeX - noticeW - 12.0f;
-            mRenderer.DrawPill(noticeX, topY, noticeW, 26.0f, Color::Hex(0x2D2518, dim));
-            mRenderer.DrawPillOutline(noticeX, topY, noticeW, 26.0f, 1.0f, Color::Hex(0x524329, dim));
-            mRenderer.DrawText(noticeX + noticeW * 0.5f, topY + 7.0f, appletNotice, 12.0f, Color::Hex(0xF5CF8E, dim), TextAlign::Center);
+        mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight),
+                           Color::Hex(0x0D0E12, 1.0f));
+    }
+    mRenderer.DrawRectOutline(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight),
+                              1.0f, Color::Hex(0x242730, bgBlurDim));
+
+    // =========================================================================
+    // CAMADA INTERMEDIÁRIA 1: Vitrais Facetados (Azul Esq., Vermelho Dir., Centro)
+    // =========================================================================
+    const float floatWave = std::sin(mPulseTimer * 0.65f) * 12.0f * s;
+    mRenderer.DrawDiamondGlow(mWidth * 0.14f + ox, mHeight * 0.22f + floatWave + oy,
+                              mWidth * 0.36f, mHeight * 0.46f,
+                              Color::Hex(0x00C3E3, 0.34f * bgBlurDim), Color::Hex(0x00607A, 0.0f));
+    mRenderer.DrawDiamondGlow(mWidth * 0.86f + ox, mHeight * 0.24f - floatWave + oy,
+                              mWidth * 0.36f, mHeight * 0.46f,
+                              Color::Hex(0xFF3C28, 0.32f * bgBlurDim), Color::Hex(0x7A140A, 0.0f));
+    mRenderer.DrawDiamondGlow(mWidth * 0.48f + ox, mHeight * 0.85f + oy,
+                              mWidth * 0.42f, mHeight * 0.40f,
+                              Color::Hex(0x3B1D5E, 0.20f * bgBlurDim), Color::Hex(0x000000, 0.0f));
+
+    // =========================================================================
+    // CAMADA INTERMEDIÁRIA 2: Micro-símbolos estilo PlayStation com sombra preta
+    // =========================================================================
+    mRenderer.DrawPlayStationPattern(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight), 52.0f * s);
+
+    // CANTO SUPERIOR DIREITO DA TELA 1: Pill "v<VERSION> | Comp. <BUILD>" com ponto #00C3E3
+    const float badgeW = 204.0f * s;
+    const float badgeH = 36.0f * s;
+    const float badgeX = static_cast<float>(mWidth) - badgeW - 22.0f * s + ox;
+    const float badgeY = 18.0f * s + oy;
+    mRenderer.DrawPill(badgeX + 1.5f * s, badgeY + 3.0f * s, badgeW, badgeH, Color::Rgba(0, 0, 0, static_cast<uint8_t>(220 * bgBlurDim)));
+    mRenderer.DrawPill(badgeX, badgeY, badgeW, badgeH, Color::Rgba(0, 0, 0, static_cast<uint8_t>(170 * bgBlurDim)));
+    mRenderer.DrawPillOutline(badgeX, badgeY, badgeW, badgeH, 1.0f * s, Color::Hex(0x242730, bgBlurDim));
+    mRenderer.DrawCircle(badgeX + 18.0f * s, badgeY + badgeH * 0.5f, 4.0f * s, Color::Hex(0x00C3E3, bgBlurDim));
+    DrawShadowedText(mRenderer, badgeX + badgeW * 0.5f + 8.0f * s, badgeY + 8.0f * s,
+                     "v" SWITCHCAST_VERSION_FULL_STR, 16.5f * s, Color::Hex(0xD4D4D8, bgBlurDim), TextAlign::Center);
+
+    // =========================================================================
+    // TELA 2 FRONTAL: Minimalista e Elegante ("SwitchCast" + "Vamos dar o play?")
+    // =========================================================================
+    const float cardScale = 1.0f - (0.015f * blurAmount);
+    const float baseCardW = 780.0f * s;
+    const float baseCardH = 420.0f * s;
+    const float cardW = baseCardW * cardScale;
+    const float cardH = baseCardH * cardScale;
+    const float cx = (mWidth - cardW) * 0.5f + ox;
+    const float cy = (mHeight - cardH) * 0.5f + oy;
+
+    // Sombra preta profunda + Corpo rgba(14, 16, 21, 0.88) + Borda sólida #383D48 + Borda interna #1A1D24
+    mRenderer.DrawRoundedRectWithShadow(
+        cx, cy, cardW, cardH, 24.0f * s,
+        Color::Rgba(14, 16, 21, static_cast<uint8_t>(225 * bgBlurDim)),
+        Color::Hex(0x383D48, bgBlurDim * (1.0f - 0.5f * blurAmount)),
+        1.5f * s, 18.0f * s, 12.0f * s,
+        Color::Hex(0x000000, 0.96f * bgBlurDim)
+    );
+    mRenderer.DrawRoundedRectOutline(cx + 1.5f * s, cy + 1.5f * s, cardW - 3.0f * s, cardH - 3.0f * s,
+                                     22.5f * s, 1.0f * s, Color::Hex(0x1A1D24, bgBlurDim));
+
+    // Função lambda para desenhar os elementos internos da Tela 2 (permite multi-pass Gaussian Blur quando o menu abre!)
+    const float pulseScale = 1.0f + 0.035f * (0.5f + 0.5f * std::sin(mPulseTimer * 2.1f));
+    const float playBoxSize = 72.0f * s * pulseScale;
+    const float playBoxX = cx + (cardW - playBoxSize) * 0.5f;
+    const float playBoxY = cy + cardH * 0.31f - (playBoxSize - 72.0f * s) * 0.5f;
+    const float textBaseY = cy + cardH * 0.31f + 92.0f * s;
+
+    auto drawCardInner = [&](float dx, float dy, float passAlpha, bool withShadow) {
+        // Topo: SwitchCast
+        if (withShadow) {
+            DrawShadowedText(mRenderer, cx + cardW * 0.5f + dx, cy + 32.0f * s + dy,
+                             "SwitchCast", 31.0f * s, Color::Hex(0xF4F4F5, passAlpha), TextAlign::Center);
+        } else {
+            mRenderer.DrawText(cx + cardW * 0.5f + dx, cy + 32.0f * s + dy,
+                               "SwitchCast", 31.0f * s, Color::Hex(0xF4F4F5, passAlpha), TextAlign::Center);
+        }
+
+        // Botão de Play central
+        if (withShadow) {
+            mRenderer.DrawRoundedRect(playBoxX + 2.0f * s + dx, playBoxY + 6.0f * s + dy, playBoxSize, playBoxSize, 18.0f * s,
+                                      Color::Rgba(0, 0, 0, static_cast<uint8_t>(240 * passAlpha)));
+        }
+        mRenderer.DrawRoundedRect(playBoxX + dx, playBoxY + dy, playBoxSize, playBoxSize, 18.0f * s,
+                                  Color::Rgba(10, 14, 20, static_cast<uint8_t>(235 * passAlpha)));
+        mRenderer.DrawRoundedRectOutline(playBoxX + dx, playBoxY + dy, playBoxSize, playBoxSize, 18.0f * s, 1.5f * s,
+                                         Color::Hex(0x383D48, passAlpha));
+        mRenderer.DrawPlayStationSymbol('P',
+                                        playBoxX + playBoxSize * 0.5f + 1.5f * s + dx,
+                                        playBoxY + playBoxSize * 0.5f + dy,
+                                        28.0f * s * pulseScale,
+                                        Color::Hex(0xF4F4F5, passAlpha),
+                                        withShadow);
+
+        // Título Central: "Vamos dar o play?"
+        if (withShadow) {
+            DrawShadowedText(mRenderer, cx + cardW * 0.5f + dx, textBaseY + dy,
+                             "Vamos dar o play?", 27.0f * s, Color::Hex(0xF4F4F5, passAlpha), TextAlign::Center);
+            DrawShadowedText(mRenderer, cx + cardW * 0.5f + dx, textBaseY + 38.0f * s + dy,
+                             "Envie videos ou musicas do seu celular ou computador", 18.5f * s, Color::Hex(0xA1A1AA, passAlpha), TextAlign::Center);
+        } else {
+            mRenderer.DrawText(cx + cardW * 0.5f + dx, textBaseY + dy,
+                               "Vamos dar o play?", 27.0f * s, Color::Hex(0xF4F4F5, passAlpha), TextAlign::Center);
+            mRenderer.DrawText(cx + cardW * 0.5f + dx, textBaseY + 38.0f * s + dy,
+                               "Envie videos ou musicas do seu celular ou computador", 18.5f * s, Color::Hex(0xA1A1AA, passAlpha), TextAlign::Center);
+        }
+    };
+
+    if (blurAmount < 0.05f) {
+        drawCardInner(0.0f, 0.0f, bgBlurDim, true);
+    } else {
+        // Efeito real de Gaussian Blur multi-pass na Tela 2 quando o menu está abrindo/aberto
+        const float sharpWeight = std::max(0.18f, 1.0f - blurAmount * 0.82f) * bgBlurDim;
+        drawCardInner(0.0f, 0.0f, sharpWeight, false);
+
+        const float blurRad = 3.2f * s * blurAmount;
+        const float ringWeight = 0.14f * blurAmount * bgBlurDim;
+        const float offsets[6][2] = {
+            { -blurRad,  0.0f }, {  blurRad,  0.0f },
+            {  0.0f, -blurRad }, {  0.0f,  blurRad },
+            { -blurRad * 0.7f, -blurRad * 0.7f }, { blurRad * 0.7f, blurRad * 0.7f }
+        };
+        for (int k = 0; k < 6; ++k) {
+            drawCardInner(offsets[k][0], offsets[k][1], ringWeight, false);
         }
     }
 
-    // 2. Card Central Master (Surface Container #1D2024, radius 28px)
-    const float cardW = (mWidth >= 1920) ? 1000.0f : 840.0f;
-    const float cardH = (mHeight >= 1080) ? 450.0f : 370.0f;
-    const float cx = (mWidth - cardW) * 0.5f + ox;
-    const float cy = (mHeight - cardH) * 0.5f - 8.0f + oy;
-    const float cardRadius = 28.0f;
+    // =========================================================================
+    // OVERLAY DE BLUR LEVE + SÍMBOLOS EM MOVIMENTO QUANDO O MENU ESTÁ ABERTO
+    // =========================================================================
+    if (mMenuAnimProgress > 0.01f) {
+        // Véu acrílico translúcido + brilho difuso de fundo
+        mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight),
+                           Color::Rgba(5, 8, 14, static_cast<uint8_t>(115.0f * mMenuAnimProgress)));
+    }
 
-    // Fundo do card e contorno sutil
-    mRenderer.DrawRoundedRect(cx, cy, cardW, cardH, cardRadius, Color::Hex(0x1D2024, dim));
-    mRenderer.DrawRoundedRectOutline(cx, cy, cardW, cardH, cardRadius, 1.0f, Color::Hex(0x35383F, dim));
+    // Após abrir o menu, a malha de símbolos em movimento e os 4 símbolos DVD surgem no fundo
+    if (mMenuAnimProgress > 0.15f) {
+        const float symAlpha = std::clamp((mMenuAnimProgress - 0.15f) / 0.85f, 0.0f, 0.88f);
+        RenderDvdSymbols(s, symAlpha * dim);
+    }
 
-    // Avatar Central com Pulso Suave (Primary Container #004A77 + Acento #A8C7FA)
-    const float pulse = (std::sin(mPulseTimer * 2.2f) + 1.0f) * 0.5f;
-    const float iconCenterX = cx + cardW * 0.5f;
-    const float iconCenterY = cy + 54.0f;
+    // =========================================================================
+    // GAVETA DESLIZANTE DA ESQUERDA PARA A DIREITA (z-50)
+    // =========================================================================
+    RenderDrawer(s, dim);
 
-    // Onda externa tonal discreta
-    mRenderer.DrawCircle(iconCenterX, iconCenterY, 32.0f + pulse * 6.0f, Color::Hex(0x004A77, (0.20f + 0.15f * pulse) * dim));
-    // Circulo base do avatar
-    mRenderer.DrawCircle(iconCenterX, iconCenterY, 26.0f, Color::Hex(0x004A77, dim));
-    // Ícone de Transmissao vetorial no centro
-    mRenderer.DrawRoundedRect(iconCenterX - 11.0f, iconCenterY - 8.0f, 22.0f, 16.0f, 3.0f, Color::Hex(0xA8C7FA, dim));
-    mRenderer.DrawRoundedRect(iconCenterX - 9.0f, iconCenterY - 6.0f, 18.0f, 12.0f, 2.0f, Color::Hex(0x004A77, dim));
-    mRenderer.DrawCircle(iconCenterX - 5.0f, iconCenterY + 1.0f, 3.0f, Color::Hex(0xA8C7FA, dim));
+    // =========================================================================
+    // BOTÃO MORPH REAL NA EXTREMA ESQUERDA SUPERIOR (z-60, sempre no topo)
+    // =========================================================================
+    DrawMorphSwitchButton(16.0f * s + ox, 16.0f * s + oy, mMenuAnimProgress, s, dim);
 
-    // Titulo e Subtitulo com tipografia aumentada e perfeitamente centralizada
-    mRenderer.DrawText(iconCenterX, cy + 96.0f, "Pronto para transmitir", 24.0f, Color::Hex(0xE2E2E6, dim), TextAlign::Center);
-    mRenderer.DrawText(iconCenterX, cy + 126.0f, "Envie videos ou musicas do celular, computador ou navegador", 15.0f, Color::Hex(0xC4C7C5, dim), TextAlign::Center);
-
-    // Box interno para IP e Conectividade (Surface Container High #24282F, radius 16px)
-    const float boxW = cardW - 64.0f;
-    const float boxH = 92.0f;
-    const float boxX = cx + 32.0f;
-    const float boxY = cy + 154.0f;
-
-    mRenderer.DrawRoundedRect(boxX, boxY, boxW, boxH, 16.0f, Color::Hex(0x24282F, dim));
-    mRenderer.DrawRoundedRectOutline(boxX, boxY, boxW, boxH, 16.0f, 1.0f, Color::Hex(0x333740, dim));
-
-    const std::string ipText = mAddressLine.empty() ? "Obtendo endereco de rede local..." : mAddressLine;
-    mRenderer.DrawText(boxX + boxW * 0.5f, boxY + 20.0f, ipText, 21.0f, Color::Hex(0x6DD58C, dim), TextAlign::Center);
-
-    const std::string subNet = "Renderizador DLNA/UPnP Ativo - Descoberta SSDP - Servidor REST e WebSocket";
-    mRenderer.DrawText(boxX + boxW * 0.5f, boxY + 54.0f, subNet, 13.0f, Color::Hex(0x8E918F, dim), TextAlign::Center);
-
-    // 3 Status Chips informativos na base do card com espacamento harmonioso
-    const float chipRowY = cy + 264.0f;
-    const float chipGap = 12.0f;
-    const float chipW = (boxW - 2.0f * chipGap) / 3.0f;
-
-    // Chip 1: Motor NVDEC
-    mRenderer.DrawRoundedRect(boxX, chipRowY, chipW, 40.0f, 12.0f, Color::Hex(0x20232A, dim));
-    mRenderer.DrawRoundedRectOutline(boxX, chipRowY, chipW, 40.0f, 12.0f, 1.0f, Color::Hex(0x2F333B, dim));
-    mRenderer.DrawText(boxX + 12.0f, chipRowY + 14.0f, "NVDEC HW", 12.0f, Color::Hex(0xA8C7FA, dim), TextAlign::Left);
-    mRenderer.DrawText(boxX + chipW - 12.0f, chipRowY + 14.0f, "H.264 / HEVC", 12.0f, Color::Hex(0xC4C7C5, dim), TextAlign::Right);
-
-    // Chip 2: Servidor FTP
-    const float chip2X = boxX + chipW + chipGap;
-    mRenderer.DrawRoundedRect(chip2X, chipRowY, chipW, 40.0f, 12.0f, Color::Hex(0x20232A, dim));
-    mRenderer.DrawRoundedRectOutline(chip2X, chipRowY, chipW, 40.0f, 12.0f, 1.0f, Color::Hex(0x2F333B, dim));
-    mRenderer.DrawText(chip2X + 12.0f, chipRowY + 14.0f, "Servidor FTP", 12.0f, Color::Hex(0x6DD58C, dim), TextAlign::Left);
-    mRenderer.DrawText(chip2X + chipW - 12.0f, chipRowY + 14.0f, "Porta 5000/21", 12.0f, Color::Hex(0xC4C7C5, dim), TextAlign::Right);
-
-    // Chip 3: Sistema
-    const float chip3X = boxX + 2.0f * (chipW + chipGap);
-    mRenderer.DrawRoundedRect(chip3X, chipRowY, chipW, 40.0f, 12.0f, Color::Hex(0x20232A, dim));
-    mRenderer.DrawRoundedRectOutline(chip3X, chipRowY, chipW, 40.0f, 12.0f, 1.0f, Color::Hex(0x2F333B, dim));
-    mRenderer.DrawText(chip3X + 12.0f, chipRowY + 14.0f, "Renderizador", 12.0f, Color::Hex(0xA8C7FA, dim), TextAlign::Left);
-    mRenderer.DrawText(chip3X + chipW - 12.0f, chipRowY + 14.0f, "OpenGL 4.3", 12.0f, Color::Hex(0xC4C7C5, dim), TextAlign::Right);
-
-    // Dica de compatibilidade elegante
-    const std::string compText = "Compativel com BubbleUPnP, Web Video Caster, VLC, mupnp, AirPlay e HTTP";
-    mRenderer.DrawText(iconCenterX, cy + cardH - 26.0f, compText, 12.0f, Color::Hex(0x8E918F, dim), TextAlign::Center);
-
-    // 3. Barra Inferior (Legenda de Acoes em Pilula Centralizada)
-    const float botY = mHeight - 44.0f + oy;
-    const std::string buttonsLegend = (updater.HasUpdateReady() || updater.IsDownloading())
-        ? "(A) Pausar   (X) Central de Atualizacoes   (L/R) Volume   (-) Mudo   (+) Sair"
-        : "(A) Pausar   (L/R) Volume   (-) Mudo   (Toque) Brilho e Volume   (+) Sair";
-    const float legendW = mRenderer.MeasureTextWidth(buttonsLegend, 13.0f) + 36.0f;
-    const float legendX = (mWidth - legendW) * 0.5f + ox;
-
-    mRenderer.DrawPill(legendX, botY - 3.0f, legendW, 28.0f, Color::Hex(0x1A1D24, dim));
-    mRenderer.DrawPillOutline(legendX, botY - 3.0f, legendW, 28.0f, 1.0f, Color::Hex(0x2E333E, dim));
-    mRenderer.DrawText(mWidth * 0.5f + ox, botY + 4.5f, buttonsLegend, 13.0f, Color::Hex(0xC4C7C5, dim), TextAlign::Center);
-
-    // 4. Toast flutuante de notificacao se houver
+    // -------------------------------------------------------------------------
+    // Toast Flutuante de Notificação (se houver)
+    // -------------------------------------------------------------------------
     const double now = Platform::NowSeconds();
     if (now < mToastUntil && !mToast.empty()) {
-        const float tw = mRenderer.MeasureTextWidth(mToast, 15.0f) + 44.0f;
-        const float th = 38.0f;
+        const float toastFontSize = 16.0f * s;
+        const float tw = mRenderer.MeasureTextWidth(mToast, toastFontSize) + 40.0f * s;
+        const float th = 38.0f * s;
         const float tx = (mWidth - tw) * 0.5f;
-        const float ty = 50.0f;
-        mRenderer.DrawPill(tx, ty, tw, th, Color::Hex(0x1D2024, 0.96f));
-        mRenderer.DrawPillOutline(tx, ty, tw, th, 1.0f, Color::Hex(0x44474E, 0.9f));
-        mRenderer.DrawText(mWidth * 0.5f, ty + 10.0f, mToast, 15.0f, Color::Hex(0xE2E2E6, 1.0f), TextAlign::Center);
+        const float ty = 40.0f * s;
+        mRenderer.DrawPill(tx, ty, tw, th, Color::Hex(0x11141C, 0.98f));
+        mRenderer.DrawPillOutline(tx, ty, tw, th, 1.5f * s, Color::Hex(0x383D48, 0.95f));
+        DrawShadowedText(mRenderer, mWidth * 0.5f, ty + 9.5f * s, mToast, toastFontSize, Color::Hex(0xF4F4F5, 1.0f), TextAlign::Center);
     }
+
+    mRenderer.EndFrame();
+}
+
+void UIEngine::RenderAbout() {
+    mRenderer.BeginFrame(mWidth, mHeight);
+
+    const float ox = mBurnIn.OffsetX();
+    const float oy = mBurnIn.OffsetY();
+    const float dim = mBurnIn.DimmingFactor();
+    const float s = (mWidth >= 1920) ? 1.5f : 1.0f;
+
+    // PLANO 1 (Traseiro): Tela Base 90/10 (#0D0E12)
+    mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight), Color::Hex(0x0D0E12, 1.0f));
+    mRenderer.DrawRectOutline(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight), 1.0f, Color::Hex(0x242730, dim));
+
+    // PLANO 2 (Intermediário): Vitrais Neon Dual + Símbolos PlayStation
+    const float vitralL_X = mWidth * 0.16f + ox;
+    const float vitralL_Y = mHeight * 0.32f + oy;
+    mRenderer.DrawDiamondGlow(vitralL_X, vitralL_Y, mWidth * 0.36f, mHeight * 0.44f,
+                              Color::Hex(0x00C3E3, 0.32f * dim), Color::Hex(0x004557, 0.0f));
+
+    const float vitralR_X = mWidth * 0.84f + ox;
+    const float vitralR_Y = mHeight * 0.68f + oy;
+    mRenderer.DrawDiamondGlow(vitralR_X, vitralR_Y, mWidth * 0.36f, mHeight * 0.44f,
+                              Color::Hex(0xFF3C28, 0.32f * dim), Color::Hex(0x5E1007, 0.0f));
+
+    mRenderer.DrawPlayStationPattern(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight), 68.0f);
+
+    // PLANO 3 (Frontal): Card Master com Borda Sólida #383D48
+    const float cardW = (mWidth >= 1920) ? 1640.0f : 1100.0f;
+    const float cardH = (mHeight >= 1080) ? 920.0f : 616.0f;
+    const float cx = (mWidth - cardW) * 0.5f + ox;
+    const float cy = (mHeight - cardH) * 0.5f - 8.0f + oy;
+    const float cardRadius = 24.0f * s;
+
+    mRenderer.DrawRoundedRectWithShadow(
+        cx, cy, cardW, cardH, cardRadius,
+        Color::Rgba(14, 16, 21, static_cast<uint8_t>(225 * dim)),
+        Color::Hex(0x383D48, dim),
+        1.5f * s, 16.0f * s, 10.0f * s,
+        Color::Hex(0x000000, 0.95f * dim)
+    );
+
+    mRenderer.DrawRoundedRectOutline(cx + 1.5f * s, cy + 1.5f * s, cardW - 3.0f * s, cardH - 3.0f * s,
+                                     cardRadius - 1.5f * s, 1.0f * s, Color::Hex(0x1A1D24, dim));
+
+    const float padX = 32.0f * s;
+
+    // Cabeçalho da Aba Sobre
+    const float headY = cy + 22.0f * s;
+    const float iconSize = 36.0f * s;
+    const float iconX = cx + padX;
+    const float iconY = headY;
+
+    mRenderer.DrawRoundedRect(iconX, iconY, iconSize, iconSize, 10.0f * s, Color::Hex(0x000000, dim));
+    mRenderer.DrawRoundedRectOutline(iconX, iconY, iconSize, iconSize, 10.0f * s, 1.0f * s, Color::Hex(0x383D48, dim));
+    mRenderer.DrawRoundedRect(iconX + 3.0f * s, iconY + 3.0f * s, iconSize * 0.5f - 4.0f * s, iconSize - 6.0f * s, 4.0f * s, Color::Hex(0x00C3E3, dim));
+    mRenderer.DrawRoundedRect(iconX + iconSize * 0.5f + 1.0f * s, iconY + 3.0f * s, iconSize * 0.5f - 4.0f * s, iconSize - 6.0f * s, 4.0f * s, Color::Hex(0xFF3C28, dim));
+
+    const float brandTextX = iconX + iconSize + 14.0f * s;
+    const float brandFontSize = 24.0f * s;
+    mRenderer.DrawTextWithShadow(brandTextX, headY + 5.0f * s, "SwitchCast - Sobre e Dados Técnicos", brandFontSize, Color::Hex(0xF4F4F5, dim));
+
+    const float chipFontSize = 13.5f * s;
+    const std::string verText = SWITCHCAST_VERSION_FULL_STR;
+    const float verTextW = mRenderer.MeasureTextWidth(verText, chipFontSize);
+    const float verChipW = verTextW + 20.0f * s;
+    const float verChipX = cx + cardW - padX - verChipW;
+    mRenderer.DrawPill(verChipX, headY + 5.0f * s, verChipW, 26.0f * s, Color::Hex(0x000000, dim));
+    mRenderer.DrawPillOutline(verChipX, headY + 5.0f * s, verChipW, 26.0f * s, 1.0f * s, Color::Hex(0x383D48, dim));
+    mRenderer.DrawTextWithShadow(verChipX + verChipW * 0.5f, headY + 9.5f * s, verText, chipFontSize, Color::Hex(0xE2E2E6, dim), TextAlign::Center);
+
+    // Grid 2x3 de Especificações Técnicas Detalhadas
+    const float gridY = headY + 52.0f * s;
+    const float totalW = cardW - 2.0f * padX;
+    const float colGap = 16.0f * s;
+    const float rowGap = 14.0f * s;
+    const float colW = (totalW - colGap) * 0.5f;
+    const float rowH = 110.0f * s;
+
+    struct TechItem {
+        const char* title;
+        const char* value;
+        const char* detail;
+        uint32_t accent;
+        uint32_t border;
+    };
+
+    const TechItem specs[6] = {
+        {"1. ACELERAÇÃO DE VÍDEO", "Motor NVDEC HW (Tegra X1)", "Decodificação nativa H.264/HEVC a 60 FPS sem aquecimento", 0x00C3E3, 0x0A637A},
+        {"2. ÁUDIO PROFISSIONAL", "ITU-R BS.775 + Soft Limiter", "Downmix surround 5.1 equilibrado e boost de volume a 150%", 0xFF3C28, 0x7A1D16},
+        {"3. SERVIDOR DE ARQUIVOS", "Servidor FTP (Porta 5000 / 21)", "Acesso e transferências ultra-rápidas para o microSD", 0x6DD58C, 0x1A5930},
+        {"4. RENDERIZADOR 2D", "OpenGL 4.3 Core Profile", "Design System Vitral Stealth com sombras pretas profundas", 0xA8C7FA, 0x383D48},
+        {"5. PROTOCOLOS DE REDE", "DLNA / UPnP, SSDP, WebSocket", "Descoberta SSDP local e API REST para controle remoto web", 0xE2E2E6, 0x383D48},
+        {"6. PROTEÇÃO ZERO-LOCK", "Rollback Automático (L + R)", "Restauração de segurança imediata segurando L e R no boot", 0xFEE48A, 0x5A4300}
+    };
+
+    const float specTitleFont = 14.0f * s;
+    const float specValFont = 18.5f * s;
+    const float specDetailFont = 15.0f * s;
+
+    for (int i = 0; i < 6; ++i) {
+        int r = i / 2;
+        int c = i % 2;
+        float itemX = cx + padX + c * (colW + colGap);
+        float itemY = gridY + r * (rowH + rowGap);
+
+        mRenderer.DrawRoundedRectWithShadow(
+            itemX, itemY, colW, rowH, 14.0f * s,
+            Color::Rgba(0, 0, 0, static_cast<uint8_t>(200 * dim)),
+            Color::Hex(specs[i].border, dim), 1.0f * s, 6.0f * s, 4.0f * s,
+            Color::Hex(0x000000, 0.90f * dim)
+        );
+
+        mRenderer.DrawTextWithShadow(itemX + 16.0f * s, itemY + 12.0f * s, specs[i].title, specTitleFont, Color::Hex(0xA1A1AA, dim), TextAlign::Left);
+        mRenderer.DrawTextWithShadow(itemX + 16.0f * s, itemY + 38.0f * s, specs[i].value, specValFont, Color::Hex(specs[i].accent, dim), TextAlign::Left);
+        mRenderer.DrawTextWithShadow(itemX + 16.0f * s, itemY + 74.0f * s, specs[i].detail, specDetailFont, Color::Hex(0x8E918F, dim), TextAlign::Left);
+    }
+
+    // Rodapé da Aba Sobre com Botão Virtual [Voltar] no Canto Esquerdo
+    const float footY = cy + cardH - 52.0f * s;
+    mRenderer.DrawLine(cx + padX, footY - 12.0f * s, cx + cardW - padX, footY - 12.0f * s, 1.0f * s, Color::Hex(0x2A2E38, dim));
+
+    const float backBtnW = 160.0f * s;
+    const float backBtnH = 34.0f * s;
+    const float backBtnX = cx + padX;
+    mRenderer.DrawRoundedRect(backBtnX, footY - 2.0f * s, backBtnW, backBtnH, 8.0f * s, Color::Hex(0x000000, dim));
+    mRenderer.DrawRoundedRectOutline(backBtnX, footY - 2.0f * s, backBtnW, backBtnH, 8.0f * s, 1.0f * s, Color::Hex(0x383D48, dim));
+    mRenderer.DrawTextWithShadow(backBtnX + backBtnW * 0.5f, footY + 6.0f * s, "Voltar", 16.0f * s, Color::Hex(0xE2E2E6, dim), TextAlign::Center);
+
+    // Barra inferior
+    const float botY = mHeight - 34.0f * s + oy;
+    const std::string backLegend = "(B) Voltar   (L/R) Volume   (-) Mudo   (+) Sair";
+    const float legendFontSize = 14.5f * s;
+    const float legendH = 28.0f * s;
+    const float legendW = mRenderer.MeasureTextWidth(backLegend, legendFontSize) + 38.0f * s;
+    const float legendX = (mWidth - legendW) * 0.5f + ox;
+    mRenderer.DrawPill(legendX, botY - 3.0f * s, legendW, legendH, Color::Hex(0x000000, dim));
+    mRenderer.DrawPillOutline(legendX, botY - 3.0f * s, legendW, legendH, 1.0f * s, Color::Hex(0x2E333E, dim));
+    mRenderer.DrawTextWithShadow(mWidth * 0.5f + ox, botY + 5.0f * s, backLegend, legendFontSize, Color::Hex(0xC4C7C5, dim), TextAlign::Center);
+
+    mRenderer.EndFrame();
+}
+
+void UIEngine::RenderHowToUse() {
+    mRenderer.BeginFrame(mWidth, mHeight);
+
+    const float ox = mBurnIn.OffsetX();
+    const float oy = mBurnIn.OffsetY();
+    const float dim = mBurnIn.DimmingFactor();
+    const float s = (mWidth >= 1920) ? 1.5f : 1.0f;
+
+    // PLANO 1 (Traseiro): Tela Base 90/10 (#0D0E12)
+    mRenderer.DrawRect(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight), Color::Hex(0x0D0E12, 1.0f));
+    mRenderer.DrawRectOutline(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight), 1.0f, Color::Hex(0x242730, dim));
+
+    // PLANO 2 (Intermediário): Vitrais Neon Dual + Símbolos PlayStation
+    const float vitralL_X = mWidth * 0.16f + ox;
+    const float vitralL_Y = mHeight * 0.32f + oy;
+    mRenderer.DrawDiamondGlow(vitralL_X, vitralL_Y, mWidth * 0.36f, mHeight * 0.44f,
+                              Color::Hex(0x00C3E3, 0.32f * dim), Color::Hex(0x004557, 0.0f));
+
+    const float vitralR_X = mWidth * 0.84f + ox;
+    const float vitralR_Y = mHeight * 0.68f + oy;
+    mRenderer.DrawDiamondGlow(vitralR_X, vitralR_Y, mWidth * 0.36f, mHeight * 0.44f,
+                              Color::Hex(0xFF3C28, 0.32f * dim), Color::Hex(0x5E1007, 0.0f));
+
+    mRenderer.DrawPlayStationPattern(0.0f, 0.0f, static_cast<float>(mWidth), static_cast<float>(mHeight), 68.0f);
+
+    // PLANO 3 (Frontal): Card Master com Borda Sólida #383D48
+    const float cardW = (mWidth >= 1920) ? 1640.0f : 1100.0f;
+    const float cardH = (mHeight >= 1080) ? 920.0f : 616.0f;
+    const float cx = (mWidth - cardW) * 0.5f + ox;
+    const float cy = (mHeight - cardH) * 0.5f - 8.0f + oy;
+    const float cardRadius = 24.0f * s;
+
+    mRenderer.DrawRoundedRectWithShadow(
+        cx, cy, cardW, cardH, cardRadius,
+        Color::Rgba(14, 16, 21, static_cast<uint8_t>(225 * dim)),
+        Color::Hex(0x383D48, dim),
+        1.5f * s, 16.0f * s, 10.0f * s,
+        Color::Hex(0x000000, 0.95f * dim)
+    );
+
+    mRenderer.DrawRoundedRectOutline(cx + 1.5f * s, cy + 1.5f * s, cardW - 3.0f * s, cardH - 3.0f * s,
+                                     cardRadius - 1.5f * s, 1.0f * s, Color::Hex(0x1A1D24, dim));
+
+    const float padX = 32.0f * s;
+
+    // Cabeçalho da Aba Como Usar
+    const float headY = cy + 22.0f * s;
+    const float iconSize = 36.0f * s;
+    const float iconX = cx + padX;
+    const float iconY = headY;
+
+    mRenderer.DrawRoundedRect(iconX, iconY, iconSize, iconSize, 10.0f * s, Color::Hex(0x000000, dim));
+    mRenderer.DrawRoundedRectOutline(iconX, iconY, iconSize, iconSize, 10.0f * s, 1.0f * s, Color::Hex(0x383D48, dim));
+    mRenderer.DrawRoundedRect(iconX + 3.0f * s, iconY + 3.0f * s, iconSize * 0.5f - 4.0f * s, iconSize - 6.0f * s, 4.0f * s, Color::Hex(0x00C3E3, dim));
+    mRenderer.DrawRoundedRect(iconX + iconSize * 0.5f + 1.0f * s, iconY + 3.0f * s, iconSize * 0.5f - 4.0f * s, iconSize - 6.0f * s, 4.0f * s, Color::Hex(0xFF3C28, dim));
+
+    const float brandTextX = iconX + iconSize + 14.0f * s;
+    const float brandFontSize = 24.0f * s;
+    mRenderer.DrawTextWithShadow(brandTextX, headY + 5.0f * s, "SwitchCast - Como Usar", brandFontSize, Color::Hex(0xF4F4F5, dim));
+
+    const float chipFontSize = 13.5f * s;
+    const std::string verText = SWITCHCAST_VERSION_FULL_STR;
+    const float verTextW = mRenderer.MeasureTextWidth(verText, chipFontSize);
+    const float verChipW = verTextW + 20.0f * s;
+    const float verChipX = cx + cardW - padX - verChipW;
+    mRenderer.DrawPill(verChipX, headY + 5.0f * s, verChipW, 26.0f * s, Color::Hex(0x000000, dim));
+    mRenderer.DrawPillOutline(verChipX, headY + 5.0f * s, verChipW, 26.0f * s, 1.0f * s, Color::Hex(0x383D48, dim));
+    mRenderer.DrawTextWithShadow(verChipX + verChipW * 0.5f, headY + 9.5f * s, verText, chipFontSize, Color::Hex(0xE2E2E6, dim), TextAlign::Center);
+
+    // Grid 2x2 de Instruções de Uso
+    const float gridY = headY + 52.0f * s;
+    const float totalW = cardW - 2.0f * padX;
+    const float colGap = 16.0f * s;
+    const float rowGap = 14.0f * s;
+    const float colW = (totalW - colGap) * 0.5f;
+    const float rowH = 175.0f * s;
+
+    struct GuideItem {
+        const char* step;
+        const char* title;
+        const char* desc1;
+        const char* desc2;
+        uint32_t accent;
+        uint32_t border;
+    };
+
+    const GuideItem guides[4] = {
+        {"1. CONEXÃO WI-FI", "Mesma Rede Local", "Conecte celular, computador ou tablet", "na mesma rede Wi-Fi deste Switch.", 0x00C3E3, 0x0A637A},
+        {"2. SELECIONE O VÍDEO", "Seu App Preferido", "Abra qualquer vídeo no Web Video Caster,", "BubbleUPnP, YouTube, VLC ou navegadores.", 0xA8C7FA, 0x383D48},
+        {"3. INICIAR TRANSMISSÃO", "Escolha 'SwitchCast'", "Toque no ícone de Transmissão (Cast/DLNA)", "e selecione 'SwitchCast' para reproduzir.", 0x6DD58C, 0x1A5930},
+        {"4. CONTROLE REMOTO WEB", "Acesse pelo Navegador", "Abra o IP exibido na tela inicial para pausar,", "ajustar volume e selecionar legendas.", 0xFF3C28, 0x7A1D16}
+    };
+
+    for (int i = 0; i < 4; ++i) {
+        int r = i / 2;
+        int c = i % 2;
+        float itemX = cx + padX + c * (colW + colGap);
+        float itemY = gridY + r * (rowH + rowGap);
+
+        mRenderer.DrawRoundedRectWithShadow(
+            itemX, itemY, colW, rowH, 14.0f * s,
+            Color::Rgba(0, 0, 0, static_cast<uint8_t>(200 * dim)),
+            Color::Hex(guides[i].border, dim), 1.0f * s, 6.0f * s, 4.0f * s,
+            Color::Hex(0x000000, 0.90f * dim)
+        );
+
+        mRenderer.DrawTextWithShadow(itemX + 18.0f * s, itemY + 14.0f * s, guides[i].step, 14.0f * s, Color::Hex(guides[i].accent, dim), TextAlign::Left);
+        mRenderer.DrawTextWithShadow(itemX + 18.0f * s, itemY + 42.0f * s, guides[i].title, 19.0f * s, Color::Hex(0xF4F4F5, dim), TextAlign::Left);
+        mRenderer.DrawTextWithShadow(itemX + 18.0f * s, itemY + 82.0f * s, guides[i].desc1, 15.0f * s, Color::Hex(0xA1A1AA, dim), TextAlign::Left);
+        mRenderer.DrawTextWithShadow(itemX + 18.0f * s, itemY + 112.0f * s, guides[i].desc2, 15.0f * s, Color::Hex(0xA1A1AA, dim), TextAlign::Left);
+    }
+
+    // Rodapé da Aba Como Usar com Botão Virtual [Voltar] no Canto Esquerdo
+    const float footY = cy + cardH - 52.0f * s;
+    mRenderer.DrawLine(cx + padX, footY - 12.0f * s, cx + cardW - padX, footY - 12.0f * s, 1.0f * s, Color::Hex(0x2A2E38, dim));
+
+    const float backBtnW = 160.0f * s;
+    const float backBtnH = 34.0f * s;
+    const float backBtnX = cx + padX;
+    mRenderer.DrawRoundedRect(backBtnX, footY - 2.0f * s, backBtnW, backBtnH, 8.0f * s, Color::Hex(0x000000, dim));
+    mRenderer.DrawRoundedRectOutline(backBtnX, footY - 2.0f * s, backBtnW, backBtnH, 8.0f * s, 1.0f * s, Color::Hex(0x383D48, dim));
+    mRenderer.DrawTextWithShadow(backBtnX + backBtnW * 0.5f, footY + 6.0f * s, "Voltar", 16.0f * s, Color::Hex(0xE2E2E6, dim), TextAlign::Center);
+
+    // Barra inferior
+    const float botY = mHeight - 34.0f * s + oy;
+    const std::string backLegend = "(B) Voltar   (L/R) Volume   (-) Mudo   (+) Sair";
+    const float legendFontSize = 14.5f * s;
+    const float legendH = 28.0f * s;
+    const float legendW = mRenderer.MeasureTextWidth(backLegend, legendFontSize) + 38.0f * s;
+    const float legendX = (mWidth - legendW) * 0.5f + ox;
+    mRenderer.DrawPill(legendX, botY - 3.0f * s, legendW, legendH, Color::Hex(0x000000, dim));
+    mRenderer.DrawPillOutline(legendX, botY - 3.0f * s, legendW, legendH, 1.0f * s, Color::Hex(0x2E333E, dim));
+    mRenderer.DrawTextWithShadow(mWidth * 0.5f + ox, botY + 5.0f * s, backLegend, legendFontSize, Color::Hex(0xC4C7C5, dim), TextAlign::Center);
 
     mRenderer.EndFrame();
 }

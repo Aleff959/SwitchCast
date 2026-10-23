@@ -36,9 +36,9 @@ if (-not $Clean) {
             $json = Get-Content $manifestPath -Raw | ConvertFrom-Json
             $json.core.sha256 = $hash
             $json.core.size_bytes = $size
-            $json.core.version = "2.1.0"
-            $json.core.version_code = 20100
-            $json.core.download_url = "https://github.com/Aleff959/SwitchCast/releases/download/v2.1.0/SwitchCastCore.nro"
+            $json.core.version = "2.3.0"
+            $json.core.version_code = 20300
+            $json.core.download_url = "https://github.com/Aleff959/SwitchCast/releases/download/v2.3.0/SwitchCastCore.nro"
             [System.IO.File]::WriteAllText($manifestPath, ($json | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
             Write-Host "OK: Manifest atualizado com SHA256 $hash ($size bytes)"
         }

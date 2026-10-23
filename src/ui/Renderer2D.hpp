@@ -54,8 +54,21 @@ public:
     void DrawPillOutline(float x, float y, float w, float h, float thickness, Color color);
     void DrawProgressBar(float x, float y, float w, float h, float progress, Color bgColor, Color fillProgressColor);
 
+    // Primitivas Vitral Stealth
+    void DrawLine(float x0, float y0, float x1, float y1, float thickness, Color color);
+    void DrawDiamondGlow(float cx, float cy, float radiusX, float radiusY, Color centerColor, Color edgeColor);
+    void DrawPlayStationSymbol(char symbol, float cx, float cy, float size, Color color, bool withShadow = true);
+    void DrawPlayStationPattern(float x, float y, float w, float h, float spacing = 68.0f);
+    void DrawRoundedRectWithShadow(float x, float y, float w, float h, float radius, Color fillColor,
+                                   Color outlineColor, float outlineThickness = 1.5f,
+                                   float shadowOffsetY = 12.0f, float shadowSpread = 8.0f,
+                                   Color shadowColor = Color::Hex(0x000000, 0.90f));
+
     // Renderização de texto (FreeType com fonte nativa do Switch ou fallback de bitmap)
     void DrawText(float x, float y, const std::string& text, float size, Color color, TextAlign align = TextAlign::Left);
+    void DrawTextWithShadow(float x, float y, const std::string& text, float size, Color color,
+                            TextAlign align = TextAlign::Left, float shadowDx = 1.5f, float shadowDy = 1.5f,
+                            Color shadowColor = Color::Hex(0x000000, 0.95f));
     float MeasureTextWidth(const std::string& text, float size);
 
 private:
@@ -89,9 +102,10 @@ private:
     GLint mLocUseTex = -1;
     GLint mLocTex = -1;
 
+    static constexpr float kFontBaseSize = 48.0f;
     GLuint mFontTexture = 0;
-    int mAtlasWidth = 512;
-    int mAtlasHeight = 512;
+    int mAtlasWidth = 1024;
+    int mAtlasHeight = 1024;
     GlyphInfo mGlyphs[256] = {};
     bool mFontLoaded = false;
 

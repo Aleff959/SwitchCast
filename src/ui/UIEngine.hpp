@@ -6,6 +6,7 @@
 #include <mpv/client.h>
 #include <mpv/render_gl.h>
 
+#include <array>
 #include <memory>
 #include <string>
 
@@ -60,15 +61,49 @@ private:
     void SetBrightness(float value);
     enum class ScreenView {
         Dashboard,
+        About,
+        HowToUse,
         UpdateCenter
     };
 
+    enum class DrawerTab {
+        HowToUse = 0,
+        WhatsNew = 1,
+        About = 2
+    };
+
+    struct DvdSymbol {
+        float x, y;
+        float vx, vy;
+        float scale = 1.0f;
+        int colorIdx = 0;
+        int shapeType = 0; // 0 = Losango, 1 = Círculo, 2 = Quadrado, 3 = Triângulo
+    };
+
     void RenderDashboard(const PlayerSnapshot& snap, bool hasWallpaper = false);
+    void RenderAbout();
+    void RenderHowToUse();
     void RenderVideoOverlay(const PlayerSnapshot& snap);
     void RenderUpdateCenter();
 
+    void DrawMorphSwitchButton(float x, float y, float t, float s, float dim);
+    void RenderDrawer(float s, float dim);
+    void UpdateDvdPhysics(float delta);
+    void RenderDvdSymbols(float s, float alpha);
+
     ScreenView mCurrentScreen = ScreenView::Dashboard;
     bool mUpdateDialogDismissed = false;
+
+    bool mMenuOpen = false;
+    float mMenuAnimProgress = 0.0f; // 0.0f = Hambúrguer (Fechado) -> 1.0f = Switch (Aberto)
+    DrawerTab mActiveDrawerTab = DrawerTab::HowToUse;
+
+    std::array<DvdSymbol, 4> mDvdSymbols = {{
+        { 560.0f, 120.0f,  215.0f,  185.0f, 1.0f, 0, 0 },
+        { 940.0f, 180.0f, -195.0f,  210.0f, 1.0f, 1, 1 },
+        { 640.0f, 480.0f,  205.0f, -190.0f, 1.0f, 2, 2 },
+        { 990.0f, 520.0f, -210.0f, -180.0f, 1.0f, 0, 3 }
+    }};
 
     std::shared_ptr<MpvPlayer> mPlayer;
     OledBurnInGuard mBurnIn;

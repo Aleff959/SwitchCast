@@ -179,11 +179,11 @@ bool Renderer2D::InitFont() {
         return false;
     }
 
-    // Configura o tamanho base do glifo para 36px
-    FT_Set_Pixel_Sizes(face, 0, 36);
+    // Configura o tamanho base do glifo para kFontBaseSize (48px) para nitidez máxima
+    FT_Set_Pixel_Sizes(face, 0, static_cast<FT_UInt>(kFontBaseSize));
 
     mAtlasWidth = 1024;
-    mAtlasHeight = 512;
+    mAtlasHeight = 1024;
     std::vector<uint8_t> atlasData(mAtlasWidth * mAtlasHeight, 0);
 
     int curX = 1;
@@ -428,6 +428,208 @@ void Renderer2D::DrawProgressBar(float x, float y, float w, float h, float progr
     }
 }
 
+void Renderer2D::DrawLine(float x0, float y0, float x1, float y1, float thickness, Color color) {
+    float dx = x1 - x0;
+    float dy = y1 - y0;
+    float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 0.001f) return;
+
+    if (mCurrentTextureMode != 0) {
+        Flush();
+        mCurrentTextureMode = 0;
+    }
+
+    float halfThick = thickness * 0.5f;
+    float nx = (-dy / len) * halfThick;
+    float ny = (dx / len) * halfThick;
+
+    mVertices.push_back({x0 + nx, y0 + ny, 0, 0, color.r, color.g, color.b, color.a});
+    mVertices.push_back({x1 + nx, y1 + ny, 0, 0, color.r, color.g, color.b, color.a});
+    mVertices.push_back({x1 - nx, y1 - ny, 0, 0, color.r, color.g, color.b, color.a});
+
+    mVertices.push_back({x0 + nx, y0 + ny, 0, 0, color.r, color.g, color.b, color.a});
+    mVertices.push_back({x1 - nx, y1 - ny, 0, 0, color.r, color.g, color.b, color.a});
+    mVertices.push_back({x0 - nx, y0 - ny, 0, 0, color.r, color.g, color.b, color.a});
+}
+
+void Renderer2D::DrawDiamondGlow(float cx, float cy, float radiusX, float radiusY, Color centerColor, Color edgeColor) {
+    if (mCurrentTextureMode != 0) {
+        Flush();
+        mCurrentTextureMode = 0;
+    }
+
+    const int rings = 6;
+    for (int r = 0; r < rings; ++r) {
+        float t0 = (float)r / rings;
+        float t1 = (float)(r + 1) / rings;
+
+        // Decaimento quadrático para simulação perfeita de desfoque gaussiano
+        float a0 = centerColor.a * (1.0f - t0 * t0) + edgeColor.a * (t0 * t0);
+        float a1 = centerColor.a * (1.0f - t1 * t1) + edgeColor.a * (t1 * t1);
+
+        Color c0 = {
+            centerColor.r * (1.0f - t0) + edgeColor.r * t0,
+            centerColor.g * (1.0f - t0) + edgeColor.g * t0,
+            centerColor.b * (1.0f - t0) + edgeColor.b * t0,
+            a0
+        };
+        Color c1 = {
+            centerColor.r * (1.0f - t1) + edgeColor.r * t1,
+            centerColor.g * (1.0f - t1) + edgeColor.g * t1,
+            centerColor.b * (1.0f - t1) + edgeColor.b * t1,
+            a1
+        };
+
+        // 4 vértices do anel interno (losango)
+        float inTopX = cx, inTopY = cy - radiusY * t0;
+        float inRightX = cx + radiusX * t0, inRightY = cy;
+        float inBotX = cx, inBotY = cy + radiusY * t0;
+        float inLeftX = cx - radiusX * t0, inLeftY = cy;
+
+        // 4 vértices do anel externo (losango)
+        float outTopX = cx, outTopY = cy - radiusY * t1;
+        float outRightX = cx + radiusX * t1, outRightY = cy;
+        float outBotX = cx, outBotY = cy + radiusY * t1;
+        float outLeftX = cx - radiusX * t1, outLeftY = cy;
+
+        auto pushQuadCol = [this](float x0, float y0, Color ca,
+                                  float x1, float y1, Color cb,
+                                  float x2, float y2, Color cc,
+                                  float x3, float y3, Color cd) {
+            mVertices.push_back({x0, y0, 0, 0, ca.r, ca.g, ca.b, ca.a});
+            mVertices.push_back({x1, y1, 0, 0, cb.r, cb.g, cb.b, cb.a});
+            mVertices.push_back({x2, y2, 0, 0, cc.r, cc.g, cc.b, cc.a});
+
+            mVertices.push_back({x0, y0, 0, 0, ca.r, ca.g, ca.b, ca.a});
+            mVertices.push_back({x2, y2, 0, 0, cc.r, cc.g, cc.b, cc.a});
+            mVertices.push_back({x3, y3, 0, 0, cd.r, cd.g, cd.b, cd.a});
+        };
+
+        // 4 quadriláteros do anel
+        pushQuadCol(inTopX, inTopY, c0, outTopX, outTopY, c1, outRightX, outRightY, c1, inRightX, inRightY, c0);
+        pushQuadCol(inRightX, inRightY, c0, outRightX, outRightY, c1, outBotX, outBotY, c1, inBotX, inBotY, c0);
+        pushQuadCol(inBotX, inBotY, c0, outBotX, outBotY, c1, outLeftX, outLeftY, c1, inLeftX, inLeftY, c0);
+        pushQuadCol(inLeftX, inLeftY, c0, outLeftX, outLeftY, c1, outTopX, outTopY, c1, inTopX, inTopY, c0);
+    }
+}
+
+void Renderer2D::DrawPlayStationSymbol(char symbol, float cx, float cy, float size, Color color, bool withShadow) {
+    if (withShadow) {
+        // Regra do Design System: Sombra preta profunda com deslocamento dx=2, dy=2.5
+        DrawPlayStationSymbol(symbol, cx + 2.0f, cy + 2.5f, size, Color::Hex(0x000000, 0.95f), false);
+    }
+
+    const float half = size * 0.5f;
+    const float thick = std::max(1.6f, size * 0.085f);
+
+    switch (symbol) {
+        case 'P': // Ícone Play Preenchido ▶ (apontando para a direita)
+        case '>': {
+            if (mCurrentTextureMode != 0) {
+                Flush();
+                mCurrentTextureMode = 0;
+            }
+            const float xLeft  = cx - half * 0.65f;
+            const float xRight = cx + half * 0.85f;
+            const float yTop   = cy - half * 0.85f;
+            const float yBot   = cy + half * 0.85f;
+            mVertices.push_back({xLeft,  yTop, 0, 0, color.r, color.g, color.b, color.a});
+            mVertices.push_back({xRight, cy,   0, 0, color.r, color.g, color.b, color.a});
+            mVertices.push_back({xLeft,  yBot, 0, 0, color.r, color.g, color.b, color.a});
+            break;
+        }
+        case 'D': // Losango ◇
+        case 'd': {
+            float r = half * 0.85f;
+            DrawLine(cx, cy - r, cx + r, cy, thick, color);
+            DrawLine(cx + r, cy, cx, cy + r, thick, color);
+            DrawLine(cx, cy + r, cx - r, cy, thick, color);
+            DrawLine(cx - r, cy, cx, cy - r, thick, color);
+            break;
+        }
+        case 'T': // Triângulo △
+        case '^': {
+            float x0 = cx, y0 = cy - half;
+            float x1 = cx + half, y1 = cy + half * 0.8f;
+            float x2 = cx - half, y2 = cy + half * 0.8f;
+            DrawLine(x0, y0, x1, y1, thick, color);
+            DrawLine(x1, y1, x2, y2, thick, color);
+            DrawLine(x2, y2, x0, y0, thick, color);
+            break;
+        }
+        case 'C': // Círculo ○
+        case 'O': {
+            float rad = half * 0.85f;
+            const int segs = 16;
+            for (int i = 0; i < segs; ++i) {
+                float a0 = (float)i / segs * 2.0f * M_PI;
+                float a1 = (float)(i + 1) / segs * 2.0f * M_PI;
+                DrawLine(cx + std::cos(a0) * rad, cy + std::sin(a0) * rad,
+                         cx + std::cos(a1) * rad, cy + std::sin(a1) * rad, thick, color);
+            }
+            break;
+        }
+        case 'X': // Cruz ✕
+        case 'x': {
+            float r = half * 0.75f;
+            DrawLine(cx - r, cy - r, cx + r, cy + r, thick, color);
+            DrawLine(cx - r, cy + r, cx + r, cy - r, thick, color);
+            break;
+        }
+        case 'S': // Quadrado □
+        case '#': {
+            float r = half * 0.72f;
+            DrawLine(cx - r, cy - r, cx + r, cy - r, thick, color);
+            DrawLine(cx + r, cy - r, cx + r, cy + r, thick, color);
+            DrawLine(cx + r, cy + r, cx - r, cy + r, thick, color);
+            DrawLine(cx - r, cy + r, cx - r, cy - r, thick, color);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+void Renderer2D::DrawPlayStationPattern(float x, float y, float w, float h, float spacing) {
+    const char symbols[] = {'D', 'C', 'S', 'T'};
+    int rowIdx = 0;
+
+    for (float curY = y + 16.0f; curY < y + h; curY += spacing, ++rowIdx) {
+        float startX = (rowIdx % 2 == 1) ? (x + spacing * 0.5f) : (x + 20.0f);
+        int colIdx = 0;
+        for (float curX = startX; curX < x + w; curX += spacing, ++colIdx) {
+            char sym = symbols[(rowIdx * 2 + colIdx) % 4];
+
+            // Cores sutis com acentos ocasionais dos Joy-Cons
+            Color col = Color::Rgba(255, 255, 255, 20);
+            if ((colIdx + rowIdx) % 5 == 1) {
+                col = Color::Rgba(0, 195, 227, 42);  // Joy-Con L Neon Blue
+            } else if ((colIdx + rowIdx) % 5 == 3) {
+                col = Color::Rgba(255, 60, 40, 42);   // Joy-Con R Neon Red
+            }
+
+            DrawPlayStationSymbol(sym, curX, curY, 14.0f, col, true);
+        }
+    }
+}
+
+void Renderer2D::DrawRoundedRectWithShadow(float x, float y, float w, float h, float radius,
+                                           Color fillColor, Color outlineColor, float outlineThickness,
+                                           float shadowOffsetY, float shadowSpread, Color shadowColor) {
+    // Sombra projetada profunda
+    DrawRoundedRect(x - shadowSpread * 0.5f, y + shadowOffsetY,
+                    w + shadowSpread, h,
+                    radius + shadowSpread * 0.4f, shadowColor);
+
+    // Superfície do card
+    DrawRoundedRect(x, y, w, h, radius, fillColor);
+
+    // Delineado de borda sólida escura
+    if (outlineThickness > 0.0f) {
+        DrawRoundedRectOutline(x, y, w, h, radius, outlineThickness, outlineColor);
+    }
+}
+
 namespace {
 inline int NextUtf8CodePoint(const std::string& text, size_t& i) {
     unsigned char c = static_cast<unsigned char>(text[i]);
@@ -451,19 +653,29 @@ inline int NextUtf8CodePoint(const std::string& text, size_t& i) {
             return ((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
         }
     }
+    // Sequência de 4 bytes (0xF0 a 0xF7) ex.: emojis e símbolos adicionais
+    else if ((c & 0xF8) == 0xF0 && i + 3 < text.size()) {
+        unsigned char c2 = static_cast<unsigned char>(text[i + 1]);
+        unsigned char c3 = static_cast<unsigned char>(text[i + 2]);
+        unsigned char c4 = static_cast<unsigned char>(text[i + 3]);
+        if ((c2 & 0xC0) == 0x80 && (c3 & 0xC0) == 0x80 && (c4 & 0xC0) == 0x80) {
+            i += 3;
+            return ((c & 0x07) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F);
+        }
+    }
     return c;
 }
 }  // namespace
 
 float Renderer2D::MeasureTextWidth(const std::string& text, float size) {
-    float scale = size / 36.0f;
+    float scale = size / kFontBaseSize;
     float width = 0.0f;
     for (size_t i = 0; i < text.size(); ++i) {
         int code = NextUtf8CodePoint(text, i);
         if (code >= 32 && code < 256 && mGlyphs[code].advance > 0) {
             width += mGlyphs[code].advance * scale;
         } else if (code >= 32) {
-            width += 12.0f * scale;
+            width += 14.0f * scale;
         }
     }
     return width;
@@ -481,7 +693,7 @@ void Renderer2D::DrawText(float x, float y, const std::string& text, float size,
         mCurrentTextureMode = 1;
     }
 
-    float scale = size / 36.0f;
+    float scale = size / kFontBaseSize;
     float drawX = x;
 
     if (align == TextAlign::Center) {
@@ -495,7 +707,7 @@ void Renderer2D::DrawText(float x, float y, const std::string& text, float size,
         if (code < 32) continue;
 
         if (code == 32) {
-            float spAdv = (mGlyphs[32].advance > 0) ? static_cast<float>(mGlyphs[32].advance) : 12.0f;
+            float spAdv = (mGlyphs[32].advance > 0) ? static_cast<float>(mGlyphs[32].advance) : 14.0f;
             drawX += spAdv * scale;
             continue;
         }
@@ -503,7 +715,7 @@ void Renderer2D::DrawText(float x, float y, const std::string& text, float size,
         if (code < 256 && mGlyphs[code].width > 0 && mGlyphs[code].height > 0) {
             const GlyphInfo& g = mGlyphs[code];
             float x0 = drawX + g.bearingX * scale;
-            float y0 = y + (36.0f * scale) - (g.bearingY * scale);
+            float y0 = y + (kFontBaseSize * scale) - (g.bearingY * scale);
             float x1 = x0 + g.width * scale;
             float y1 = y0 + g.height * scale;
 
@@ -512,9 +724,18 @@ void Renderer2D::DrawText(float x, float y, const std::string& text, float size,
         } else if (code < 256 && mGlyphs[code].advance > 0) {
             drawX += mGlyphs[code].advance * scale;
         } else {
-            drawX += 12.0f * scale;
+            drawX += 14.0f * scale;
         }
     }
 }
 
+void Renderer2D::DrawTextWithShadow(float x, float y, const std::string& text, float size, Color color,
+                                    TextAlign align, float shadowDx, float shadowDy, Color shadowColor) {
+    // 1. Sombra preta profunda desenhada primeiro
+    DrawText(x + shadowDx, y + shadowDy, text, size, shadowColor, align);
+    // 2. Texto principal frontal
+    DrawText(x, y, text, size, color, align);
+}
+
 } // namespace SwitchCast
+

@@ -1,7 +1,10 @@
 // network/WebRemote.hpp - Interface Web de Controle Remoto e Transmissão do SwitchCast
+// Padrão Vitral Stealth: Botão Morph (Hambúrguer -> Switch), Tela 2 Frontal "Vamos dar o play?",
+// Símbolos DVD Drifting e Gaveta Lateral com Abas em Linha Única.
 #pragma once
 
 #include <string>
+#include "../common/Types.hpp"
 
 namespace SwitchCast {
 
@@ -15,36 +18,31 @@ inline const char* GetWebRemoteHtml() {
   <link rel="icon" type="image/jpeg" href="/icon.jpg">
   <style>
     :root {
-      --bg: #090b10;
-      --card-bg: rgba(18, 24, 38, 0.78);
-      --card-border: rgba(255, 255, 255, 0.08);
-      --cyan: #00E5FF;
-      --cyan-glow: rgba(0, 229, 255, 0.35);
-      --red: #FF2A55;
-      --red-glow: rgba(255, 42, 85, 0.35);
-      --green: #10B981;
-      --amber: #F59E0B;
-      --text: #F3F4F6;
-      --text-muted: #9CA3AF;
-      --surface: rgba(10, 14, 22, 0.85);
-      --radius: 16px;
+      --bg-base: color-mix(in srgb, #000000 90%, #707075 10%);
+      --switch-blue: #00C3E3;
+      --switch-red: #FF3C28;
+      --border-dark-solid: #383D48;
+      --border-dark-deep: #242730;
+      --text-white: #F4F4F5;
+      --text-muted: #A1A1AA;
+      --shadow-black: #000000;
+      --win11-font: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
     }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      background:
-        radial-gradient(circle at 10% 10%, rgba(0, 229, 255, 0.09) 0%, transparent 40%),
-        radial-gradient(circle at 90% 10%, rgba(255, 42, 85, 0.09) 0%, transparent 40%),
-        radial-gradient(circle at top center, #111a2e 0%, var(--bg) 60%);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0D0E12;
+      color: var(--text-white);
+      font-family: var(--win11-font);
+      font-feature-settings: "cv05", "cv08", "ss01";
+      -webkit-font-smoothing: antialiased;
       min-height: 100vh;
-      padding: 20px 16px 40px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
       overflow-x: hidden;
+      position: relative;
     }
-    /* Animated Video Wallpaper */
+
+    /* Video Wallpaper Animado (em segundo plano) */
     .bg-video {
       position: fixed;
       top: 0;
@@ -52,298 +50,623 @@ inline const char* GetWebRemoteHtml() {
       width: 100vw;
       height: 100vh;
       object-fit: cover;
-      z-index: -2;
-      opacity: 0.38;
-      filter: saturate(1.25) brightness(0.85);
+      z-index: -3;
+      opacity: 0.22;
+      filter: saturate(1.2) brightness(0.7);
       pointer-events: none;
-      transition: opacity 1s ease;
     }
-    .bg-overlay {
+
+    /* Tela 1 (Base 90% Preta / 10% Cinza) */
+    .base-screen {
+      position: relative;
+      min-height: 100vh;
+      width: 100%;
+      background-color: var(--bg-base);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+      overflow: hidden;
+      box-shadow: 0 28px 70px var(--shadow-black);
+    }
+
+    /* Alvo de Desfoque ao Abrir Menu */
+    .bg-scene-blur-target {
+      transition: filter 0.36s cubic-bezier(0.16, 1, 0.3, 1), transform 0.36s cubic-bezier(0.16, 1, 0.3, 1);
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .bg-scene-blur-target.is-blurred {
+      filter: blur(2.5px) brightness(0.86);
+      transform: scale(0.99);
+    }
+
+    /* Micro-textura PlayStation de Fundo */
+    .ps-texture {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.28;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Badge Superior Direito da Tela 1 ("v2.3.0 | Comp. 27") */
+    .top-right-badge {
+      position: absolute;
+      top: 18px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.85);
+      border: 1px solid var(--border-dark-deep);
+      font-size: 13px;
+      font-weight: 700;
+      color: #E2E2E6;
+      box-shadow: 0 4px 12px var(--shadow-black);
+      z-index: 40;
+      white-space: nowrap;
+      text-shadow: 0 1px 2px var(--shadow-black);
+    }
+    .top-right-badge .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--switch-blue);
+      box-shadow: 0 0 8px var(--switch-blue);
+    }
+
+    /* Botão Morph (Canto Superior Esquerdo da Tela 1) */
+    .morph-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: 56px;
+      height: 48px;
+      border-radius: 14px;
+      background: rgba(0, 0, 0, 0.90);
+      border: 1.5px solid var(--border-dark-solid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 100;
+      box-shadow: 0 4px 12px -2px #000000, 0 2px 6px rgba(0, 0, 0, 0.9);
+      transition: border-color 0.3s ease, background-color 0.3s ease, transform 0.15s ease;
+      outline: none;
+    }
+    .morph-btn:hover {
+      border-color: var(--switch-blue);
+      transform: scale(1.04);
+    }
+    .morph-btn:active {
+      transform: scale(0.96);
+    }
+
+    .morph-stage {
+      position: relative;
+      width: 26px;
+      height: 20px;
+    }
+
+    /* As 3 barras horizontais do hambúrguer */
+    .hbar {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 22px;
+      height: 2.8px;
+      background-color: #D4D4D8;
+      border-radius: 2px;
+      box-shadow: 0 1px 2px #000000;
+      transition:
+        transform 0.68s cubic-bezier(0.34, 1.45, 0.64, 1),
+        width 0.62s cubic-bezier(0.34, 1.45, 0.64, 1),
+        height 0.62s cubic-bezier(0.34, 1.45, 0.64, 1),
+        background-color 0.55s ease,
+        border-radius 0.55s ease,
+        border 0.55s ease;
+    }
+
+    /* Pontos dos analógicos do Switch */
+    .hbar::after {
+      content: "";
+      position: absolute;
+      width: 3.2px;
+      height: 3.2px;
+      border-radius: 50%;
+      background-color: #090B0E;
+      opacity: 0;
+      transform: scale(0.2);
+      transition: opacity 0.25s ease 0.1s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s;
+    }
+
+    .hbar-1 { transform: translate(-50%, calc(-50% - 7px)); }
+    .hbar-1::after { top: 3.5px; left: 50%; margin-left: -1.6px; }
+
+    .hbar-2 { transform: translate(-50%, -50%); }
+
+    .hbar-3 { transform: translate(-50%, calc(-50% + 7px)); }
+    .hbar-3::after { bottom: 3.5px; left: 50%; margin-left: -1.6px; }
+
+    /* Estado Transformado no Nintendo Switch (.is-switch) */
+    .morph-btn.is-switch .hbar-1 {
+      width: 7px;
+      height: 22px;
+      background-color: var(--switch-blue);
+      border-radius: 4.5px 1.5px 1.5px 4.5px;
+      transform: translate(calc(-50% - 10.5px), -50%);
+    }
+    .morph-btn.is-switch .hbar-1::after { opacity: 1; transform: scale(1); }
+
+    .morph-btn.is-switch .hbar-2 {
+      width: 12px;
+      height: 22px;
+      background-color: #0B0D11;
+      border: 1.2px solid var(--border-dark-solid);
+      border-radius: 2px;
+      transform: translate(-50%, -50%);
+    }
+
+    .morph-btn.is-switch .hbar-3 {
+      width: 7px;
+      height: 22px;
+      background-color: var(--switch-red);
+      border-radius: 1.5px 4.5px 4.5px 1.5px;
+      transform: translate(calc(-50% + 10.5px), -50%);
+    }
+    .morph-btn.is-switch .hbar-3::after { opacity: 1; transform: scale(1); }
+
+    /* Tela 2 Frontal (Centralizada e Minimalista: "Vamos dar o play?") */
+    .front-panel {
+      position: relative;
+      z-index: 10;
+      width: 90%;
+      max-width: 680px;
+      background: rgba(14, 16, 21, 0.88);
+      backdrop-filter: blur(38px) saturate(180%);
+      -webkit-backdrop-filter: blur(38px) saturate(180%);
+      border: 1.5px solid var(--border-dark-solid);
+      border-radius: 24px;
+      box-shadow:
+        0 34px 68px -10px var(--shadow-black),
+        0 16px 30px -6px rgba(0, 0, 0, 0.98),
+        0 0 0 1px #1A1D24 inset;
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 22px;
+      text-align: center;
+    }
+
+    .panel-brand-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: #F4F4F5;
+      letter-spacing: -0.5px;
+      text-shadow: 0 2px 4px var(--shadow-black), 0 4px 8px var(--shadow-black);
+    }
+
+    /* Box do Ícone Play (64x64px) centralizado */
+    .play-icon-box {
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: rgba(0, 0, 0, 0.92);
+      border: 1.5px solid var(--border-dark-solid);
+      box-shadow: 0 10px 24px var(--shadow-black), 0 2px 6px rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--switch-blue);
+      font-size: 24px;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .play-icon-box:hover {
+      transform: scale(1.06);
+      border-color: var(--switch-blue);
+      box-shadow: 0 12px 30px var(--shadow-black), 0 0 16px rgba(0, 195, 227, 0.3);
+    }
+
+    .hero-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #F4F4F5;
+      text-shadow: 0 2px 4px var(--shadow-black);
+    }
+
+    .hero-subtitle {
+      font-size: 15px;
+      color: var(--text-muted);
+      max-width: 440px;
+      line-height: 1.45;
+      text-shadow: 0 1px 3px var(--shadow-black);
+    }
+
+    /* Input & Cast Bar */
+    .cast-bar {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 520px;
+    }
+    .cast-input {
+      flex: 1;
+      height: 42px;
+      background: #090B10;
+      border: 1px solid var(--border-dark-solid);
+      border-radius: 12px;
+      padding: 0 14px;
+      color: #FFFFFF;
+      font-size: 13.5px;
+      outline: none;
+      box-shadow: inset 0 2px 4px var(--shadow-black);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .cast-input:focus {
+      border-color: var(--switch-blue);
+      box-shadow: 0 0 10px rgba(0, 195, 227, 0.3), inset 0 2px 4px var(--shadow-black);
+    }
+    .cast-btn {
+      height: 42px;
+      padding: 0 18px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #FFFFFF;
+      background: linear-gradient(135deg, #0A637A 0%, #7A1D16 100%);
+      border: 1px solid var(--border-dark-solid);
+      box-shadow: 0 6px 16px var(--shadow-black);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      text-shadow: 0 1px 2px var(--shadow-black);
+      transition: transform 0.15s, filter 0.15s;
+    }
+    .cast-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .cast-btn:active { transform: scale(0.97); }
+
+    /* Card de Reprodução Ativa */
+    .playback-widget {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid var(--border-dark-solid);
+      border-radius: 16px;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 12px 28px var(--shadow-black);
+    }
+    .playback-info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+    }
+    .playback-title {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: #FFFFFF;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 1px 3px var(--shadow-black);
+    }
+    .playback-state-pill {
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: #181B22;
+      border: 1px solid var(--border-dark-solid);
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .playback-state-pill.playing {
+      color: #34D399;
+      border-color: rgba(52, 211, 153, 0.4);
+      background: rgba(52, 211, 153, 0.12);
+    }
+
+    /* Slider de Seek */
+    .seek-slider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #1A1D24;
+      border-radius: 999px;
+      outline: none;
+      box-shadow: inset 0 1px 3px var(--shadow-black);
+    }
+    .seek-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--switch-blue);
+      box-shadow: 0 0 10px var(--switch-blue);
+      cursor: pointer;
+      border: 1px solid #FFFFFF;
+    }
+    .time-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-shadow: 0 1px 2px var(--shadow-black);
+    }
+
+    /* Botões de Controle em 1 Linha Estrita */
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      flex-wrap: nowrap;
+      white-space: nowrap;
+    }
+    .btn-ctrl {
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #E2E2E6;
+      background: rgba(0, 0, 0, 0.85);
+      border: 1px solid var(--border-dark-solid);
+      box-shadow: 0 4px 12px var(--shadow-black);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: transform 0.15s, background 0.15s;
+    }
+    .btn-ctrl:hover { background: #1A1D24; }
+    .btn-ctrl:active { transform: scale(0.97); }
+
+    .btn-play-pause {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(0, 195, 227, 0.35), rgba(255, 60, 40, 0.35));
+      border: 1px solid var(--border-dark-solid);
+      color: #FFFFFF;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    /* Rodapé do Card Frontal */
+    .card-footer {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-top: 6px;
+      border-top: 1px solid #1F232D;
+      width: 100%;
+    }
+    .card-footer-ip {
+      font-size: 18px;
+      font-weight: 700;
+      color: #6DD58C;
+      text-shadow: 0 2px 4px var(--shadow-black);
+    }
+    .card-footer-tip {
+      font-size: 13px;
+      color: #8E918F;
+      text-shadow: 0 1px 2px var(--shadow-black);
+    }
+
+    /* Backdrop de Desfoque Leve + Símbolos DVD Bouncing */
+    @keyframes symbols-drift-bg {
+      0% { background-position: 0px 0px, 0px 0px; }
+      100% { background-position: 52px -52px, 104px -104px; }
+    }
+
+    .menu-backdrop-blur {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: -1;
-      background: radial-gradient(circle at 50% 20%, rgba(9, 11, 16, 0.40) 0%, rgba(9, 11, 16, 0.88) 100%);
-      pointer-events: none;
+      background: rgba(4, 6, 10, 0.32);
+      backdrop-filter: blur(3.5px) saturate(115%);
+      -webkit-backdrop-filter: blur(3.5px) saturate(115%);
+      transition: opacity 0.34s ease, visibility 0.34s ease;
+      opacity: 1;
+      visibility: visible;
+      z-index: 80;
+      overflow: hidden;
+      cursor: pointer;
     }
-    .container {
-      width: 100%;
-      max-width: 760px;
+    .menu-backdrop-blur.closed {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.25s ease, visibility 0.25s ease;
+    }
+
+    .dvd-geo-symbol {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 34px;
+      height: 34px;
+      filter: drop-shadow(0 4px 8px #000000) drop-shadow(0 2px 4px #000000);
+      opacity: 0;
+      transition: opacity 0.45s ease 0.18s, color 0.25s ease;
+      pointer-events: none;
+      will-change: transform;
+    }
+    .menu-backdrop-blur:not(.closed) .dvd-geo-symbol {
+      opacity: 0.85;
+    }
+
+    /* Vitrais geométricos de fundo */
+    .stained-glass-shard-blue {
+      position: absolute;
+      top: -60px;
+      left: -40px;
+      width: 380px;
+      height: 380px;
+      background: radial-gradient(circle, rgba(0,195,227,0.35) 0%, rgba(0,96,122,0.18) 50%, transparent 75%);
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      filter: blur(22px) drop-shadow(0 8px 18px #000000);
+      pointer-events: none;
+      z-index: 1;
+    }
+    .stained-glass-shard-red {
+      position: absolute;
+      top: -50px;
+      right: -40px;
+      width: 380px;
+      height: 380px;
+      background: radial-gradient(circle, rgba(255,60,40,0.35) 0%, rgba(122,20,10,0.18) 50%, transparent 75%);
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      filter: blur(24px) drop-shadow(0 8px 18px #000000);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Gaveta Lateral Deslizante (drawerW = 420px) */
+    .drawer-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 420px;
+      max-width: 85vw;
+      height: 100vh;
+      background: rgba(10, 12, 16, 0.97);
+      border-right: 1.5px solid var(--border-dark-solid);
+      box-shadow: 20px 0 50px var(--shadow-black);
+      z-index: 90;
+      transform: translateX(-100%);
+      transition: transform 0.68s cubic-bezier(0.22, 1, 0.36, 1);
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      padding: 24px 20px;
     }
-    header {
+    .drawer-panel.open {
+      transform: translateX(0);
+    }
+
+    /* Abas em Linha Única no Topo da Gaveta */
+    .drawer-tabs-row {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 6px;
-      flex-wrap: wrap;
-      gap: 12px;
+      gap: 6px;
+      margin-left: 68px; /* Espaço para não cobrir o botão Morph */
+      margin-bottom: 24px;
+      white-space: nowrap;
+      flex-wrap: nowrap;
     }
-    .logo-box {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .logo-icon {
-      width: 44px;
-      height: 44px;
-      background: linear-gradient(135deg, #00A3FF, var(--cyan));
-      border-radius: 12px;
+    .drawer-tab-btn {
+      flex: 1;
+      height: 34px;
+      padding: 0 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-dark-deep);
+      background: #10131A;
+      color: #9CA3AF;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 0 20px var(--cyan-glow);
-    }
-    .logo-icon svg { width: 24px; height: 24px; fill: #000; }
-    .brand-title {
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      background: linear-gradient(90deg, #FFFFFF, var(--cyan));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .brand-sub { font-size: 12px; color: var(--text-muted); letter-spacing: 1px; font-weight: 600; }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      border-radius: 20px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      font-size: 13px;
-      font-weight: 600;
-      color: #34D399;
-      transition: all 0.3s;
-    }
-    .dot {
-      width: 8px;
-      height: 8px;
-      background-color: #10B981;
-      border-radius: 50%;
-      box-shadow: 0 0 8px #10B981;
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
-
-    .card {
-      background: var(--card-bg);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      padding: 24px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-      transition: border-color 0.2s;
-    }
-    .card:hover { border-color: rgba(0, 229, 255, 0.25); }
-    .card-title {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 16px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: #E2E8F0;
-    }
-    .card-title svg { width: 20px; height: 20px; fill: var(--cyan); }
-
-    /* Now Playing */
-    .now-playing-box {
-      background: var(--surface);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 12px;
-      padding: 18px;
-      margin-bottom: 20px;
-    }
-    .media-title {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 8px;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      color: #FFF;
+      text-shadow: 0 1px 2px var(--shadow-black);
+      transition: all 0.2s ease;
     }
-    .media-state {
-      display: inline-block;
-      font-size: 12px;
+    .drawer-tab-btn.active {
+      background: #1B212D;
+      border-color: var(--switch-blue);
+      color: var(--switch-blue);
+      box-shadow: 0 0 10px rgba(0, 195, 227, 0.25);
+    }
+
+    .drawer-content {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .drawer-section-title {
+      font-size: 15px;
       font-weight: 700;
       letter-spacing: 0.5px;
-      padding: 4px 10px;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-muted);
-      margin-bottom: 16px;
+      text-shadow: 0 1px 2px var(--shadow-black);
     }
-    .media-state.playing { background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
-    .media-state.paused { background: rgba(245, 158, 11, 0.2); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
 
-    /* Progress bar */
-    .progress-wrap { margin-bottom: 16px; }
-    .time-labels {
-      display: flex;
-      justify-content: space-between;
-      font-size: 13px;
-      font-variant-numeric: tabular-nums;
-      color: var(--text-muted);
-      margin-top: 6px;
-    }
-    input[type=range] {
-      -webkit-appearance: none;
-      width: 100%;
-      height: 8px;
-      border-radius: 4px;
-      background: #1F293D;
-      outline: none;
-      cursor: pointer;
-    }
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      background: var(--cyan);
-      box-shadow: 0 0 10px var(--cyan);
-      cursor: pointer;
-      transition: transform 0.1s;
-    }
-    input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
-
-    /* Controls */
-    .controls-grid {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 20px;
-    }
-    .btn {
-      background: #1E293B;
-      color: var(--text);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+    .guide-card-step {
+      background: rgba(0, 0, 0, 0.65);
+      border: 1px solid var(--border-dark-deep);
       border-radius: 12px;
-      padding: 12px 18px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      transition: all 0.15s ease-in-out;
-      user-select: none;
-    }
-    .btn:hover {
-      background: #334155;
-      border-color: rgba(255, 255, 255, 0.2);
-      transform: translateY(-1px);
-    }
-    .btn:active { transform: translateY(1px); }
-    .btn-primary {
-      background: linear-gradient(135deg, #00A3FF, var(--cyan));
-      color: #000;
-      border: none;
-      font-weight: 700;
-      box-shadow: 0 4px 14px var(--cyan-glow);
-    }
-    .btn-primary:hover {
-      box-shadow: 0 6px 20px var(--cyan-glow);
-      background: linear-gradient(135deg, #38BDF8, #22D3EE);
-    }
-    .btn-circle {
-      width: 58px;
-      height: 58px;
-      border-radius: 50%;
-      padding: 0;
-      font-size: 22px;
-    }
-    .btn-sm { padding: 8px 14px; font-size: 13px; border-radius: 8px; }
-
-    /* Volume */
-    .volume-row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    .volume-icon { color: var(--cyan); font-size: 18px; }
-
-    /* Cast Form */
-    .form-group {
+      padding: 12px 14px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      margin-bottom: 14px;
+      gap: 4px;
     }
-    label { font-size: 13px; font-weight: 600; color: #CBD5E1; }
-    input[type=text] {
-      background: var(--surface);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
-      padding: 12px 14px;
-      color: #FFF;
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    input[type=text]:focus {
-      border-color: var(--cyan);
-      box-shadow: 0 0 12px var(--cyan-glow);
-    }
-    .btn-block { width: 100%; padding: 14px; font-size: 16px; margin-top: 6px; }
-
-    /* Preset Chips */
-    .presets-title { font-size: 13px; color: var(--text-muted); margin: 16px 0 8px; font-weight: 600; }
-    .chips-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .chip {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 20px;
-      padding: 8px 14px;
-      font-size: 13px;
-      color: #E2E8F0;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .chip:hover {
-      background: rgba(0, 229, 255, 0.15);
-      border-color: var(--cyan);
-      color: #FFF;
-      transform: translateY(-1px);
-    }
-
-    /* Help Section */
-    .guide-box {
-      font-size: 14px;
-      color: #94A3B8;
-      line-height: 1.6;
-    }
-    .guide-item {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-    .guide-badge {
-      background: #1E293B;
-      color: var(--cyan);
-      font-size: 11px;
+    .guide-card-step .step-num {
+      font-size: 12px;
       font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 6px;
-      height: fit-content;
-      margin-top: 2px;
+      color: var(--switch-blue);
+    }
+    .guide-card-step .step-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #F4F4F5;
+    }
+    .guide-card-step .step-desc {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .about-item-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 10px;
+      border: 1px solid var(--border-dark-deep);
+    }
+    .about-item-label { font-size: 11px; color: #8E918F; }
+    .about-item-value { font-size: 13.5px; font-weight: 600; color: #F4F4F5; }
+
+    /* Rodapé da Gaveta */
+    .drawer-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-dark-deep);
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text-muted);
       white-space: nowrap;
+    }
+    .drawer-footer-comp {
+      color: var(--switch-blue);
+      text-shadow: 0 0 8px rgba(0, 195, 227, 0.4);
     }
 
     /* Toast */
@@ -352,18 +675,19 @@ inline const char* GetWebRemoteHtml() {
       bottom: 24px;
       left: 50%;
       transform: translateX(-50%) translateY(100px);
-      background: #1E293B;
-      color: #FFF;
-      border: 1px solid var(--cyan);
-      padding: 12px 24px;
+      background: #11141C;
+      color: #FFFFFF;
+      border: 1.5px solid var(--border-dark-solid);
+      padding: 10px 20px;
       border-radius: 30px;
-      font-size: 14px;
-      font-weight: 600;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 15px var(--cyan-glow);
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: 0 16px 36px var(--shadow-black);
       opacity: 0;
       transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28), opacity 0.3s;
       z-index: 999;
       pointer-events: none;
+      text-shadow: 0 2px 4px var(--shadow-black);
     }
     #toast.show {
       transform: translateX(-50%) translateY(0);
@@ -373,129 +697,339 @@ inline const char* GetWebRemoteHtml() {
 </head>
 <body>
 
-  <!-- Video Wallpaper Animado (Red & Blue Waves) -->
+  <!-- Video Wallpaper Animado -->
   <video id="bgVideo" class="bg-video" autoplay loop muted playsinline poster="/icon.jpg">
     <source src="/wallpaper.mp4" type="video/mp4">
   </video>
-  <div class="bg-overlay"></div>
 
-  <div class="container">
-    <header>
-      <div class="logo-box">
-        <img src="/icon.jpg" alt="SwitchCast" style="width:48px; height:48px; border-radius:12px; box-shadow: -4px 0 15px var(--cyan-glow), 4px 0 15px var(--red-glow); object-fit: cover;">
-        <div>
-          <div class="brand-title"><span style="color:var(--cyan);">SWITCH</span><span style="color:var(--red);">CAST</span></div>
-          <div class="brand-sub">v1.4.0 &bull; POR ALEFF959</div>
+  <!-- Botão Morph (Hambúrguer -> Nintendo Switch) -->
+  <button id="morphBtn" class="morph-btn" onclick="toggleMenu()" aria-label="Menu SwitchCast">
+    <div class="morph-stage">
+      <span class="hbar hbar-1"></span>
+      <span class="hbar hbar-2"></span>
+      <span class="hbar hbar-3"></span>
+    </div>
+  </button>
+
+  <!-- Backdrop de Blur Leve e 4 Símbolos Estilo DVD Player (Batem nos cantos e entre si) -->
+  <div id="menuBackdrop" class="menu-backdrop-blur closed" onclick="toggleMenu(false)">
+    <svg id="dvdSym0" class="dvd-geo-symbol" style="color:#00C3E3;" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2l10 10-10 10L2 12z"/>
+    </svg>
+    <svg id="dvdSym1" class="dvd-geo-symbol" style="color:#FF3C28;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8">
+      <circle cx="12" cy="12" r="8"/>
+    </svg>
+    <svg id="dvdSym2" class="dvd-geo-symbol" style="color:#E4E4E7;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7">
+      <rect x="4" y="4" width="16" height="16" rx="2.5"/>
+    </svg>
+    <svg id="dvdSym3" class="dvd-geo-symbol" style="color:#00C3E3;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7">
+      <path d="M12 3.5l9.5 16.5H2.5z"/>
+    </svg>
+  </div>
+
+  <!-- Gaveta Lateral Deslizante -->
+  <div id="drawerPanel" class="drawer-panel">
+    <!-- Abas em Linha Única -->
+    <div class="drawer-tabs-row">
+      <button id="tabBtnHow" class="drawer-tab-btn active" onclick="switchDrawerTab('how')">Como Usar</button>
+      <button id="tabBtnNews" class="drawer-tab-btn" onclick="switchDrawerTab('news')">Novidades</button>
+      <button id="tabBtnAbout" class="drawer-tab-btn" onclick="switchDrawerTab('about')">Sobre</button>
+    </div>
+
+    <!-- Conteúdo da Aba Como Usar -->
+    <div id="drawerTabHow" class="drawer-content">
+      <div class="drawer-section-title" style="color:var(--switch-blue);">GUIA R&Aacute;PIDO DE USO</div>
+      <div class="guide-card-step">
+        <span class="step-num">1. Conex&atilde;o Wi-Fi</span>
+        <span class="step-title">Mesma Rede Local</span>
+        <span class="step-desc">Conecte celular, PC ou tablet na mesma rede Wi-Fi deste Switch.</span>
+      </div>
+      <div class="guide-card-step">
+        <span class="step-num">2. Selecione a M&iacute;dia</span>
+        <span class="step-title">Seu App Preferido</span>
+        <span class="step-desc">Use Web Video Caster, BubbleUPnP, YouTube, VLC ou navegadores.</span>
+      </div>
+      <div class="guide-card-step">
+        <span class="step-num">3. Transmitir para o Switch</span>
+        <span class="step-title">Toque no &Iacute;cone Cast / DLNA</span>
+        <span class="step-desc">Escolha "SwitchCast" na lista de dispositivos para reproduzir.</span>
+      </div>
+      <div class="guide-card-step">
+        <span class="step-num">4. Controle Remoto Web</span>
+        <span class="step-title">Navegador Local</span>
+        <span class="step-desc">Acesse este painel para play/pause, seek, volume a 150% e legendas.</span>
+      </div>
+    </div>
+
+    <!-- Conteúdo da Aba Novidades -->
+    <div id="drawerTabNews" class="drawer-content" style="display:none;">
+      <div class="drawer-section-title" style="color:var(--switch-red);">NOVIDADES NA VERS&Atilde;O 2.3</div>
+      <div class="guide-card-step">
+        <span class="step-title" style="color:#F4F4F5;">Interface Minimalista</span>
+        <span class="step-desc">Painel frontal centralizado "Vamos dar o play?" focado no essencial.</span>
+      </div>
+      <div class="guide-card-step">
+        <span class="step-title" style="color:#F4F4F5;">Anima&ccedil;&atilde;o Switch Morph</span>
+        <span class="step-desc">Metamorfose fluida das 3 barras do hamb&uacute;rguer formando o Switch.</span>
+      </div>
+      <div class="guide-card-step">
+        <span class="step-title" style="color:#F4F4F5;">S&iacute;mbolos DVD Bouncing</span>
+        <span class="step-desc">Colis&otilde;es el&aacute;sticas e drifting flutuante ao abrir a gaveta.</span>
+      </div>
+      <div class="guide-card-step">
+        <span class="step-title" style="color:#F4F4F5;">Servidor FTP Ultrarr&aacute;pido</span>
+        <span class="step-desc">Acesso direto ao cart&atilde;o microSD nas portas 5000 e 21.</span>
+      </div>
+    </div>
+
+    <!-- Conteúdo da Aba Sobre -->
+    <div id="drawerTabAbout" class="drawer-content" style="display:none;">
+      <div class="drawer-section-title" style="color:#6DD58C;">SOBRE O SWITCHCAST</div>
+      <div class="about-item-row">
+        <span class="about-item-label">Sistema Operacional</span>
+        <span class="about-item-value">Atmosph&egrave;re CFW</span>
+      </div>
+      <div class="about-item-row">
+        <span class="about-item-label">Decodificador</span>
+        <span class="about-item-value">Nvidia Tegra X1 NVDEC HW (60 FPS)</span>
+      </div>
+      <div class="about-item-row">
+        <span class="about-item-label">&Aacute;udio</span>
+        <span class="about-item-value">Soft Limiter + ITU-R BS.775 5.1 Downmix</span>
+      </div>
+      <div class="about-item-row">
+        <span class="about-item-label">Protocolos Suportados</span>
+        <span class="about-item-value">DLNA / UPnP, SSDP, WebSocket &amp; REST</span>
+      </div>
+      <div class="about-item-row">
+        <span class="about-item-label">Servidor FTP</span>
+        <span class="about-item-value">Portas 5000 / 21 ativas</span>
+      </div>
+      <div class="about-item-row">
+        <span class="about-item-label">Desenvolvedor</span>
+        <span class="about-item-value">SwitchCast Team</span>
+      </div>
+    </div>
+
+    <!-- Rodapé da Gaveta -->
+    <div class="drawer-footer">
+      <span>v2.3.0</span>
+      <span class="drawer-footer-comp">Comp. 29</span>
+    </div>
+  </div>
+
+  <!-- Tela 1: Base Screen -->
+  <div class="base-screen">
+    <!-- Vitrais Facetados Intermediários -->
+    <div class="stained-glass-shard-blue"></div>
+    <div class="stained-glass-shard-red"></div>
+
+    <!-- Badge Superior Direito -->
+    <div class="top-right-badge">
+      <div class="dot"></div>
+      <span>v2.3.0 | Comp. 29</span>
+    </div>
+
+    <!-- Padrão Micro PlayStation -->
+    <svg class="ps-texture" width="100%" height="100%">
+      <defs>
+        <pattern id="psGrid" width="48" height="48" patternUnits="userSpaceOnUse">
+          <text x="8" y="16" fill="rgba(255,255,255,0.06)" font-size="11" font-weight="bold">△</text>
+          <text x="32" y="16" fill="rgba(0,195,227,0.08)" font-size="11" font-weight="bold">○</text>
+          <text x="8" y="40" fill="rgba(255,60,40,0.08)" font-size="11" font-weight="bold">✕</text>
+          <text x="32" y="40" fill="rgba(255,255,255,0.06)" font-size="11" font-weight="bold">□</text>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#psGrid)" />
+    </svg>
+
+    <!-- Cenário Alvo de Desfoque -->
+    <div id="bgSceneTarget" class="bg-scene-blur-target">
+      <!-- Tela 2 Frontal ("Vamos dar o play?") -->
+      <div class="front-panel">
+        <div class="panel-brand-title">SwitchCast</div>
+
+        <div class="play-icon-box" onclick="togglePlayPause()" title="Iniciar / Alternar Reprodução">
+          &#9658;
         </div>
-      </div>
-      <div id="connectionStatus" class="status-badge">
-        <div class="dot"></div>
-        <span id="statusText">Conectado ao Switch</span>
-      </div>
-    </header>
 
-    <!-- Now Playing -->
-    <div class="card">
-      <div class="card-title">
-        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
-        Em Reprodu&ccedil;&atilde;o no Nintendo Switch
-      </div>
-      <div class="now-playing-box">
-        <div id="mediaTitle" class="media-title">Nenhuma m&iacute;dia ativa</div>
-        <span id="mediaState" class="media-state">OCIOSO</span>
+        <div class="hero-title">Vamos dar o play?</div>
+        <div class="hero-subtitle">Envie v&iacute;deos ou m&uacute;sicas do seu celular ou computador para reproduzir instantaneamente.</div>
 
-        <div class="progress-wrap">
-          <input type="range" id="seekSlider" min="0" max="100" value="0">
+        <!-- Barra de Transmissão por URL -->
+        <div class="cast-bar">
+          <input type="text" id="mediaUrl" class="cast-input" placeholder="Cole a URL do vídeo ou stream (MP4, MKV, M3U8...)">
+          <button class="cast-btn" onclick="castMedia()">
+            &#9658; Transmitir
+          </button>
+        </div>
+
+        <!-- Widget de Reprodução Ativa -->
+        <div class="playback-widget">
+          <div class="playback-info-row">
+            <span id="mediaTitle" class="playback-title">Nenhuma m&iacute;dia ativa</span>
+            <span id="mediaState" class="playback-state-pill">OCIOSO</span>
+          </div>
+
+          <input type="range" id="seekSlider" class="seek-slider" min="0" max="100" value="0">
           <div class="time-labels">
             <span id="currentTime">00:00</span>
             <span id="totalDuration">00:00</span>
           </div>
+
+          <div class="controls-row">
+            <button class="btn-ctrl" onclick="sendCmd('seek', {offsetMs: -10000})">&#9194; -10s</button>
+            <button id="btnPlayPause" class="btn-ctrl btn-play-pause" onclick="togglePlayPause()">&#9654;</button>
+            <button class="btn-ctrl" onclick="sendCmd('stop')">&#9209; Parar</button>
+            <button class="btn-ctrl" onclick="sendCmd('seek', {offsetMs: 10000})">+10s &#9193;</button>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:10px; width:100%; padding-top:4px;">
+            <span style="color:var(--switch-blue); font-size:14px;">&#128266;</span>
+            <input type="range" id="volSlider" class="seek-slider" min="0" max="150" value="80" oninput="onVolumeChange(this.value)">
+            <span id="volLabel" style="font-size:12px; font-weight:700; color:var(--switch-blue); min-width:40px; text-align:right;">80%</span>
+            <button id="btnMute" class="btn-ctrl" style="height:28px; padding:0 8px;" onclick="toggleMute()">Mudo</button>
+          </div>
         </div>
 
-        <div class="controls-grid">
-          <button class="btn btn-sm" onclick="sendCmd('seek', {offsetMs: -10000})">&#9194; -10s</button>
-          <button id="btnPlayPause" class="btn btn-primary btn-circle" onclick="togglePlayPause()">&#9654;</button>
-          <button class="btn btn-sm" onclick="sendCmd('stop')">&#9209; Parar</button>
-          <button class="btn btn-sm" onclick="sendCmd('seek', {offsetMs: 10000})">+10s &#9193;</button>
-        </div>
-
-        <div class="volume-row">
-          <span class="volume-icon">&#128266;</span>
-          <input type="range" id="volSlider" min="0" max="150" value="80" oninput="onVolumeChange(this.value)">
-          <span id="volLabel" style="font-size:13px; font-weight:700; min-width:44px;">80%</span>
-          <button id="btnMute" class="btn btn-sm" onclick="toggleMute()">Mudo</button>
-        </div>
-      </div>
-
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="btn btn-sm" onclick="sendCmd('cycleAudio')">&#127911; Pr&oacute;xima Faixa de &Aacute;udio</button>
-        <button class="btn btn-sm" onclick="sendCmd('cycleSubtitle')">&#128172; Pr&oacute;xima Legenda</button>
-      </div>
-    </div>
-
-    <!-- Cast Media -->
-    <div class="card">
-      <div class="card-title">
-        <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
-        Transmitir V&iacute;deo ou &Aacute;udio (Link Direto)
-      </div>
-
-      <div class="form-group">
-        <label for="mediaUrl">URL do V&iacute;deo ou Stream (MP4, MKV, M3U8, HLS, TS, etc.):</label>
-        <input type="text" id="mediaUrl" placeholder="https://exemplo.com/video.mp4">
-      </div>
-      <div class="form-group">
-        <label for="mediaCustomTitle">T&iacute;tulo (Opcional):</label>
-        <input type="text" id="mediaCustomTitle" placeholder="Ex: Meu Filme 1080p">
-      </div>
-
-      <button class="btn btn-primary btn-block" onclick="castMedia()">&#9654; TRANSMITIR PARA O SWITCH</button>
-
-      <div class="presets-title">V&iacute;deos de Teste R&aacute;pido (1 Clique):</div>
-      <div class="chips-grid">
-        <div class="chip" onclick="fillAndPlay('https://commondatastream.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', 'Big Buck Bunny (1080p 60fps)')">&#127916; Big Buck Bunny 1080p</div>
-        <div class="chip" onclick="fillAndPlay('https://commondatastream.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4', 'Elephants Dream (720p)')">&#127916; Elephants Dream 720p</div>
-        <div class="chip" onclick="fillAndPlay('https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8', 'Sintel (HLS Multi-Bitrate)')">&#127871; Sintel (HLS M3U8)</div>
-      </div>
-    </div>
-
-    <!-- DLNA Guide -->
-    <div class="card">
-      <div class="card-title">
-        <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
-        Como Transmitir Direto pelo Celular (DLNA / UPnP)
-      </div>
-      <div class="guide-box">
-        <div class="guide-item">
-          <div class="guide-badge">ANDROID</div>
-          <div>Instale o <b>BubbleUPnP</b> ou <b>Web Video Caster</b>. Na aba <i>Renderers / Dispositivos</i>, selecione <b>SwitchCast</b> e transmita qualquer v&iacute;deo da web ou mem&oacute;ria.</div>
-        </div>
-        <div class="guide-item">
-          <div class="guide-badge">IPHONE / IPAD</div>
-          <div>Instale o app gratuito <b>Web Video Cast</b> ou <b>TV Assist</b> na App Store. Conecte no <b>SwitchCast</b> e envie v&iacute;deos do navegador.</div>
-        </div>
-        <div class="guide-item">
-          <div class="guide-badge">PC / MAC</div>
-          <div>No <b>VLC Media Player</b>, v&aacute; no menu <i>Reprodu&ccedil;&atilde;o &gt; Renderer</i> e escolha <b>SwitchCast</b>.</div>
+        <!-- Rodapé do Card -->
+        <div class="card-footer">
+          <div id="footerIp" class="card-footer-ip">Conectando ao Switch...</div>
+          <div class="card-footer-tip">Abra no navegador para controle remoto instant&acirc;neo</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="toast">Notifica&ccedil;&atilde;o</div>
+  <div id="toast">Notificação</div>
 
   <script>
     let ws = null;
     let isPlaying = false;
-    let durationMs = 0;
-    let isUserSeeking = false;
     let isMuted = false;
+    let isUserSeeking = false;
+    let durationMs = 0;
+    let menuOpen = false;
+    let dvdAnimId = null;
+
+    const dvdColors = ['#00C3E3', '#FF3C28', '#E4E4E7', '#38BDF8', '#FB7185'];
+    const SYM_SIZE = 34;
+    const SYM_RADIUS = 17;
+
+    const dvdSymbols = [
+      { id: 'dvdSym0', x: 460, y: 80,  vx:  2.35, vy:  1.95, colorIdx: 0, scale: 1 },
+      { id: 'dvdSym1', x: 720, y: 140, vx: -2.15, vy:  2.20, colorIdx: 1, scale: 1 },
+      { id: 'dvdSym2', x: 520, y: 380, vx:  2.25, vy: -2.05, colorIdx: 2, scale: 1 },
+      { id: 'dvdSym3', x: 780, y: 420, vx: -2.20, vy: -1.90, colorIdx: 0, scale: 1 }
+    ];
+
+    function pulseSymbolColor(sym) {
+      sym.colorIdx = (sym.colorIdx + 1) % dvdColors.length;
+      sym.scale = 1.24;
+      const el = document.getElementById(sym.id);
+      if (el) el.style.color = dvdColors[sym.colorIdx];
+    }
+
+    function updateDvdPhysics() {
+      if (!menuOpen) return;
+      const W = window.innerWidth || 1280;
+      const H = window.innerHeight || 720;
+      const minX = Math.min(426, W * 0.45);
+      const maxX = Math.max(minX + 100, W - SYM_SIZE - 8);
+      const minY = 8;
+      const maxY = H - SYM_SIZE - 8;
+
+      for (let i = 0; i < dvdSymbols.length; i++) {
+        const s = dvdSymbols[i];
+        s.x += s.vx;
+        s.y += s.vy;
+        let hitWall = false;
+        if (s.x <= minX) { s.x = minX; s.vx = Math.abs(s.vx); hitWall = true; }
+        else if (s.x >= maxX) { s.x = maxX; s.vx = -Math.abs(s.vx); hitWall = true; }
+        if (s.y <= minY) { s.y = minY; s.vy = Math.abs(s.vy); hitWall = true; }
+        else if (s.y >= maxY) { s.y = maxY; s.vy = -Math.fabs ? -Math.abs(s.vy) : -Math.abs(s.vy); hitWall = true; }
+        if (hitWall) pulseSymbolColor(s);
+      }
+
+      const minDist = SYM_RADIUS * 2;
+      for (let i = 0; i < dvdSymbols.length; i++) {
+        for (let j = i + 1; j < dvdSymbols.length; j++) {
+          const a = dvdSymbols[i];
+          const b = dvdSymbols[j];
+          const dx = (b.x + SYM_RADIUS) - (a.x + SYM_RADIUS);
+          const dy = (b.y + SYM_RADIUS) - (a.y + SYM_RADIUS);
+          const dist = Math.hypot(dx, dy);
+          if (dist < minDist && dist > 0.001) {
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const overlap = (minDist - dist) * 0.5;
+            a.x -= nx * overlap; a.y -= ny * overlap;
+            b.x += nx * overlap; b.y += ny * overlap;
+            const dvx = a.vx - b.vx;
+            const dvy = a.vy - b.vy;
+            const dot = dvx * nx + dvy * ny;
+            if (dot > 0) {
+              a.vx -= dot * nx; a.vy -= dot * ny;
+              b.vx += dot * nx; b.vy += dot * ny;
+              pulseSymbolColor(a);
+              pulseSymbolColor(b);
+            }
+          }
+        }
+      }
+
+      for (let i = 0; i < dvdSymbols.length; i++) {
+        const s = dvdSymbols[i];
+        s.scale += (1.0 - s.scale) * 0.15;
+        const el = document.getElementById(s.id);
+        if (el) {
+          el.style.transform = `translate3d(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px, 0) scale(${s.scale.toFixed(3)})`;
+        }
+      }
+
+      dvdAnimId = requestAnimationFrame(updateDvdPhysics);
+    }
+
+    function toggleMenu(forceState) {
+      menuOpen = (forceState !== undefined) ? forceState : !menuOpen;
+      const morphBtn = document.getElementById('morphBtn');
+      const backdrop = document.getElementById('menuBackdrop');
+      const drawer = document.getElementById('drawerPanel');
+      const sceneTarget = document.getElementById('bgSceneTarget');
+
+      if (menuOpen) {
+        morphBtn.classList.add('is-switch');
+        backdrop.classList.remove('closed');
+        drawer.classList.add('open');
+        sceneTarget.classList.add('is-blurred');
+        if (!dvdAnimId) dvdAnimId = requestAnimationFrame(updateDvdPhysics);
+      } else {
+        morphBtn.classList.remove('is-switch');
+        backdrop.classList.add('closed');
+        drawer.classList.remove('open');
+        sceneTarget.classList.remove('is-blurred');
+        if (dvdAnimId) {
+          cancelAnimationFrame(dvdAnimId);
+          dvdAnimId = null;
+        }
+      }
+    }
+
+    function switchDrawerTab(tab) {
+      document.getElementById('drawerTabHow').style.display = (tab === 'how') ? 'flex' : 'none';
+      document.getElementById('drawerTabNews').style.display = (tab === 'news') ? 'flex' : 'none';
+      document.getElementById('drawerTabAbout').style.display = (tab === 'about') ? 'flex' : 'none';
+
+      document.getElementById('tabBtnHow').classList.toggle('active', tab === 'how');
+      document.getElementById('tabBtnNews').classList.toggle('active', tab === 'news');
+      document.getElementById('tabBtnAbout').classList.toggle('active', tab === 'about');
+    }
 
     function showToast(msg) {
       const t = document.getElementById('toast');
       t.innerText = msg;
       t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2800);
+      setTimeout(() => { t.classList.remove('show'); }, 2200);
     }
 
     function formatTime(ms) {
@@ -514,14 +1048,12 @@ inline const char* GetWebRemoteHtml() {
       const host = window.location.hostname;
       const port = window.location.port || "8080";
       const wsUrl = `ws://${host}:${port}/ws`;
+      document.getElementById('footerIp').innerText = `http://${host}:${port}`;
       
       try {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          document.getElementById('statusText').innerText = "Conectado ao Switch";
-          document.getElementById('connectionStatus').style.borderColor = "rgba(16, 185, 129, 0.4)";
-          document.getElementById('connectionStatus').style.color = "#34D399";
           sendCmd('status');
         };
 
@@ -535,9 +1067,6 @@ inline const char* GetWebRemoteHtml() {
         };
 
         ws.onclose = () => {
-          document.getElementById('statusText').innerText = "Reconectando...";
-          document.getElementById('connectionStatus').style.borderColor = "rgba(239, 68, 68, 0.4)";
-          document.getElementById('connectionStatus').style.color = "#F87171";
           setTimeout(connectWs, 2000);
         };
       } catch (e) {
@@ -550,23 +1079,23 @@ inline const char* GetWebRemoteHtml() {
       const titleEl = document.getElementById('mediaTitle');
       const btnPlay = document.getElementById('btnPlayPause');
 
-      titleEl.innerText = (s.title && s.title.length > 0) ? s.title : (s.state !== 'Idle' ? "Transmiss\u00e3o de M\u00eddia" : "Nenhuma m\u00eddia ativa");
+      titleEl.innerText = (s.title && s.title.length > 0) ? s.title : (s.state !== 'Idle' ? "Transmissão Ativa" : "Nenhuma mídia ativa");
       durationMs = s.durationMs || 0;
 
       if (s.state === 'Playing') {
         isPlaying = true;
         stateEl.innerText = "REPRODUZINDO";
-        stateEl.className = "media-state playing";
+        stateEl.className = "playback-state-pill playing";
         btnPlay.innerHTML = "&#10074;&#10074;";
       } else if (s.state === 'Paused') {
         isPlaying = false;
         stateEl.innerText = "PAUSADO";
-        stateEl.className = "media-state paused";
+        stateEl.className = "playback-state-pill";
         btnPlay.innerHTML = "&#9654;";
       } else {
         isPlaying = false;
         stateEl.innerText = "OCIOSO";
-        stateEl.className = "media-state";
+        stateEl.className = "playback-state-pill";
         btnPlay.innerHTML = "&#9654;";
       }
 
@@ -587,8 +1116,7 @@ inline const char* GetWebRemoteHtml() {
       }
       if (s.muted !== undefined) {
         isMuted = s.muted;
-        document.getElementById('btnMute').innerText = isMuted ? "Mudo (Ativo)" : "Mudo";
-        document.getElementById('btnMute').style.borderColor = isMuted ? "var(--red)" : "";
+        document.getElementById('btnMute').innerText = isMuted ? "Mudo (On)" : "Mudo";
       }
     }
 
@@ -618,7 +1146,7 @@ inline const char* GetWebRemoteHtml() {
     function toggleMute() {
       isMuted = !isMuted;
       sendCmd('mute', {mute: isMuted});
-      showToast(isMuted ? "Som desativado" : "Som ativado");
+      showToast(isMuted ? "Mudo ativado" : "Som ativado");
     }
 
     function onVolumeChange(val) {
@@ -639,22 +1167,14 @@ inline const char* GetWebRemoteHtml() {
 
     function castMedia() {
       const url = document.getElementById('mediaUrl').value.trim();
-      const title = document.getElementById('mediaCustomTitle').value.trim();
       if (!url) {
-        showToast("Por favor, digite ou cole a URL da m\u00eddia.");
+        showToast("Por favor, digite ou cole a URL da mídia.");
         return;
       }
-      sendCmd('play', {url: url, title: title || "Transmiss\u00e3o Web"});
-      showToast("Enviando m\u00eddia para o Switch...");
+      sendCmd('play', {url: url, title: "Transmissão Web"});
+      showToast("Enviando mídia para o Switch...");
     }
 
-    function fillAndPlay(url, title) {
-      document.getElementById('mediaUrl').value = url;
-      document.getElementById('mediaCustomTitle').value = title;
-      castMedia();
-    }
-
-    // Polling de fallback caso WS falhe
     setInterval(() => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         fetch('/api/v1/status')
@@ -663,20 +1183,6 @@ inline const char* GetWebRemoteHtml() {
           .catch(() => {});
       }
     }, 1500);
-
-    // Autoplay resiliente para mobile e desktop
-    const bgVid = document.getElementById('bgVideo');
-    if (bgVid) {
-      bgVid.play().catch(() => {
-        const resumePlay = () => {
-          bgVid.play();
-          window.removeEventListener('click', resumePlay);
-          window.removeEventListener('touchstart', resumePlay);
-        };
-        window.addEventListener('click', resumePlay, { once: true });
-        window.addEventListener('touchstart', resumePlay, { once: true });
-      });
-    }
 
     connectWs();
   </script>

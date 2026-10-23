@@ -1,40 +1,39 @@
 {
-    "schema_version":  1,
-    "channel":  "stable",
-    "core":  {
-                 "version":  "2.1.0",
-                 "version_code":  20100,
-                 "min_hos_version":  "16.0.0",
-                 "download_url":  "https://github.com/Aleff959/SwitchCast/releases/download/v2.1.0/SwitchCastCore.nro",
-                 "sha256":  "ac7b018ec833e3c0207b1afd0f570d1c87ba6d5d7e38610b7dae2d1f6dc71e27",
-                 "size_bytes":  30273491,
-                 "changelog":  [
-                                   "Audio Pro: Downmix 5.1 ITU-R BS.775 e Volume Boost 150% com Soft Limiter",
-                                   "Core Leve: desacoplamento do RomFS e remocao de simbolos de depuracao",
-                                   "Launcher NetInstaller com auto-cura e download grafico do Core via rede",
-                                   "Rollback Anti-Brick Zero-Lock com restauracao de backup .bak pelo Launcher",
-                                   "Barra de download OTA corrigida com acompanhamento continuo em tempo real",
-                                   "Versionamento unificado v2.1.0 em todos os protocolos e interfaces"
-                               ]
-             },
-    "modules":  [
-                    {
-                        "id":  "protocol.roku_bridge",
-                        "name":  "Roku \u0026 DLNA Extended Bridge",
-                        "version":  "1.0.2",
-                        "entry_file":  "protocols/roku_bridge.js",
-                        "download_url":  "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/roku_bridge.js",
-                        "sha256":  "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
-                        "hot_reload":  true
-                    },
-                    {
-                        "id":  "parser.xtream_iptv",
-                        "name":  "Xtream Codes \u0026 M3U8 Advanced Parser",
-                        "version":  "1.2.0",
-                        "entry_file":  "protocols/xtream_iptv.js",
-                        "download_url":  "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/xtream_iptv.js",
-                        "sha256":  "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
-                        "hot_reload":  true
-                    }
-                ]
+    "schema_version": 1,
+    "channel": "stable",
+    "core": {
+        "version": "2.3.0",
+        "version_code": 20300,
+        "min_hos_version": "16.0.0",
+        "download_url": "https://github.com/Aleff959/SwitchCast/releases/download/v2.3.0/SwitchCastCore.nro",
+        "sha256": "55054df83839a00b26287796351aee6ab8f2ea8a267d050b88df60f4593888ab",
+        "size_bytes": 30408659,
+        "changelog": [
+            "Interface Minimalista: Painel frontal centralizado 'Vamos dar o play?' e vitrais de fundo",
+            "Morph Real: As 3 linhas do menu hamburguer se transformam fisicamente no Switch",
+            "Simbolos DVD Bouncing: 4 simbolos no fundo quicando nos cantos e colidindo entre si",
+            "Audio Pro: Downmix 5.1 ITU-R BS.775 e Volume Boost 150% com Soft Limiter",
+            "Versionamento unificado v2.3.0 (Comp. 29) em todos os protocolos e interfaces"
+        ]
+    },
+    "modules": [
+        {
+            "id": "protocol.roku_bridge",
+            "name": "Roku & DLNA Extended Bridge",
+            "version": "1.0.2",
+            "entry_file": "protocols/roku_bridge.js",
+            "download_url": "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/roku_bridge.js",
+            "sha256": "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+            "hot_reload": true
+        },
+        {
+            "id": "parser.xtream_iptv",
+            "name": "Xtream Codes & M3U8 Advanced Parser",
+            "version": "1.2.0",
+            "entry_file": "protocols/xtream_iptv.js",
+            "download_url": "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/xtream_iptv.js",
+            "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+            "hot_reload": true
+        }
+    ]
 }
