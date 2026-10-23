@@ -4,10 +4,11 @@
   <h1 align="center">SwitchCast</h1>
   <p align="center">
     <b>Receptor de mídia e streaming de alto desempenho com arquitetura modular para o Nintendo Switch</b><br>
-    <i>Versão 2.1.0 &bull; Desenvolvido por <b>Aleff959</b></i>
+    <i>Versão 2.3.0 &bull; Comp. 29 &bull; Desenvolvido por <b>Aleff959</b></i>
   </p>
   <p align="center">
-    <img src="https://img.shields.io/badge/Versão-2.1.0-FF2A55?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/Versão-2.3.0-FF2A55?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/Compilação-Comp._29-00C3E3?style=flat-square" alt="Build">
     <img src="https://img.shields.io/badge/Arquitetura-Modular_Two--Stage-00E5FF?style=flat-square" alt="Modular Architecture">
     <img src="https://img.shields.io/badge/C%2B%2B-20-7C4DFF?style=flat-square" alt="C++20">
     <img src="https://img.shields.io/badge/Renderizador-OpenGL_4.3_Core-10B981?style=flat-square" alt="OpenGL 4.3">
@@ -18,15 +19,25 @@
 
 ---
 
-**SwitchCast v2.0.0** é uma revolução completa no ecossistema homebrew para o **Nintendo Switch**. Desenvolvido em **C++20**, o projeto evoluiu de um receptor de mídia tradicional para uma **plataforma modular com inicialização em dois estágios (Launcher + Core)**, permitindo atualizações Over-The-Air (OTA) seguras e sem bloqueio de arquivos FAT32 (Zero-Lock), motor de renderização 2D próprio acelerado por shaders OpenGL 4.3, decodificação por hardware **Tegra X1 NVDEC** (`nvtegra`) e uma moderna central de controle remoto via Web.
+**SwitchCast v2.3.0 (Comp. 29)** traz uma evolução marcante no ecossistema homebrew para o **Nintendo Switch**. Desenvolvido em **C++20**, o projeto conta com uma nova **Interface Minimalista ("Vamos dar o play?")**, animação fluida de metamorfose matemática onde as **3 barras do menu hambúrguer transformam-se no console Nintendo Switch**, backdrop com desfoque óptico e **símbolos flutuantes estilo DVD Player com física de colisões elásticas 2D**, além de uma **gaveta lateral deslizante** com abas em linha única (`Como Usar`, `Novidades`, `Sobre`), servidor FTP ultrarrápido integrado e decodificação por hardware **Tegra X1 NVDEC** (`nvtegra`).
 
 ---
 
-## ✨ Destaques da Versão 2.0.0
+## ✨ Destaques da Versão 2.3.0 (Comp. 29)
 
+- 🎮 **Botão Switch Morph (Interpolação Matemática C++ / Web)**:
+  - O botão superior esquerdo não troca imagens: as 3 barras horizontais realizam interpolação geométrica contínua (`t` de `0.0` a `1.0`), tornando-se o Joy-Con L azul (`#00C3E3`), a tela OLED central (`#0B0D11`) e o Joy-Con R vermelho (`#FF3C28`) com pontos analógicos.
+- 🪟 **Tela Frontal Centralizada & Minimalista ("Vamos dar o play?")**:
+  - Painel frontal limpo, livre de poluição visual, destacando o botão central de Play com pulso suave, tipografia nítida e indicação intuitiva de transmissão.
+- 📀 **Símbolos Flutuantes Estilo DVD Player com Física 2D**:
+  - 4 símbolos táteis (△, ○, □, ✕) flutuando no plano de fundo com reflexão elástica nas bordas, colisão elástica bidimensional entre si, amortecimento de escala dinâmica (`scale = 1.25`) e alternância de cores a cada impacto.
+- 📂 **Gaveta Lateral Deslizante & Abas em Linha Única**:
+  - Gaveta suave de 420px com botão touch `✕`, cards organizados e abas sem quebra de texto: `Como Usar`, `Novidades` e `Sobre` (com identificação nativa `Atmosphère CFW`).
+- 📁 **Servidor FTP de Alta Performance Integrado (Portas 5000 / 21)**:
+  - Acesso direto e veloz aos arquivos do cartão microSD.
 - 🚀 **Arquitetura Modular em 2 Estágios (Launcher + Core)**:
-  - **`SwitchCast.nro` (Launcher / App Pai - ~7.4 MB)**: Atua como ponto de entrada oficial no Homebrew Menu. No dia a dia, inicializa em menos de **2 milissegundos** e transfere a execução via `envSetNextLoad` para o módulo Core de forma totalmente invisível.
-  - **`SwitchCastCore.nro` (Módulo Core - ~39 MB)**: Contém o motor multimídia completo, decodificadores Tegra, servidores de rede e interface visual.
+  - **`SwitchCast.nro` (Launcher / App Pai - ~7.4 MB)**: Ponto de entrada oficial com inicialização rápida (~2ms).
+  - **`SwitchCastCore.nro` (Módulo Core - ~30 MB)**: Motor multimídia completo com aceleração Tegra NVDEC e renderizador OpenGL 4.3 Core Profile.
 - 🔄 **Atualizações OTA Zero-Lock (Livres de Bloqueio FAT32)**:
   - O Horizon OS mantém arquivos `.nro` em execução travados pelo driver do sistema de arquivos. No SwitchCast v2.0.0, as atualizações são baixadas em segundo plano pelo Core e instaladas de forma atômica pelo Launcher, que assume o display com uma barra de progresso visual, substitui os binários, realiza o flush seguro no microSD (`fsdevCommitDevice`) e recarrega o app sem exigir reinicialização do console.
 - 🛡️ **Proteção Anti-Brick BootGuard**:
