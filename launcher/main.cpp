@@ -27,7 +27,25 @@ constexpr const char* kBackupPath      = "sdmc:/switch/SwitchCast/modules/Switch
 constexpr const char* kUpdatePath      = "sdmc:/switch/SwitchCast/modules/update.nro";
 constexpr const char* kStatePath       = "sdmc:/switch/SwitchCast/modules/pending_update.json";
 constexpr const char* kLegacyPath      = "sdmc:/switch/SwitchCast/SwitchCast.nro.tmp";
-constexpr const char* kCoreDownloadUrl = "https://github.com/Aleff959/SwitchCast/releases/latest/download/SwitchCastCore.nro";
+constexpr const char* kCoreDownloadUrlStable = "https://github.com/Aleff959/SwitchCast/releases/latest/download/SwitchCastCore.nro";
+constexpr const char* kCoreDownloadUrlBeta   = "https://raw.githubusercontent.com/Aleff959/SwitchCast/dev/SwitchCastCore.nro";
+constexpr const char* kSettingsFile          = "sdmc:/switch/SwitchCast/config/settings.json";
+
+bool IsBetaChannel() {
+    FILE* fp = std::fopen(kSettingsFile, "r");
+    if (!fp) return false;
+    char buf[1024];
+    size_t n = std::fread(buf, 1, sizeof(buf) - 1, fp);
+    std::fclose(fp);
+    if (n > 0) {
+        buf[n] = '\0';
+        std::string s(buf);
+        if (s.find("\"beta\"") != std::string::npos || s.find("\"dev\"") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
 
 inline void sleepMs(u64 ms) {
     svcSleepThread(ms * 1'000'000ULL);
@@ -330,7 +348,13 @@ int main(int argc, char* argv[]) {
 
     // MODO NETINSTALLER / AUTO-CURA: Baixa o Core via rede se o SD estiver sem ele
     if (!hasUpdate && !hasCore) {
-        gfx.RenderFrame("Conectando a rede para baixar o SwitchCast Core...", 0.05f);
+        bool isBeta = IsBetaChannel();
+        const char* targetUrl = isBeta ? kCoreDownloadUrlBeta : kCoreDownloadUrlStable;
+        std::string statusMsg = isBeta
+            ? "Conectando a rede para baixar o Core (Canal Beta / Dev)..."
+            : "Conectando a rede para baixar o Core (Canal Estavel)...";
+
+        gfx.RenderFrame(statusMsg, 0.05f);
         nifmInitialize(NifmServiceType_User);
 
         // Otimizacao TCP: janelas de recepcao estendidas (512 KB rx / 2 MB max)
@@ -352,7 +376,7 @@ int main(int argc, char* argv[]) {
             if (curl) {
                 NetDownloadProgress prog;
                 prog.gfx = &gfx;
-                curl_easy_setopt(curl, CURLOPT_URL, kCoreDownloadUrl);
+                curl_easy_setopt(curl, CURLOPT_URL, targetUrl);
                 curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
