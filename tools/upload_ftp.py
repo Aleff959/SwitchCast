@@ -5,11 +5,12 @@ import time
 
 SWITCH_IP = "192.168.1.68"
 PORTS = [5000, 21]
-LAUNCHER_PATH = "launcher/SwitchCast.nro"
-CORE_PATH = "SwitchCastCore.nro"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LAUNCHER_PATH = os.path.join(BASE_DIR, "SwitchCast.nro")
+CORE_PATH = os.path.join(BASE_DIR, "SwitchCastCore.nro")
 
 if not os.path.exists(LAUNCHER_PATH) and not os.path.exists(CORE_PATH):
-    print("Erro: Nenhum executavel (.nro) encontrado para envio!")
+    print(f"Erro: Nenhum executavel (.nro) encontrado em {BASE_DIR}!")
     sys.exit(1)
 
 print(f"Tentando conectar ao Switch ({SWITCH_IP}) via FTP...")
@@ -47,8 +48,8 @@ try:
             pass
 
     files_to_send = [
-        ("SwitchCast.nro", "/switch/SwitchCast/SwitchCast.nro", "App Pai (Launcher)"),
-        ("SwitchCastCore.nro", "/switch/SwitchCast/modules/SwitchCastCore.nro", "Modulo Principal (SwitchCast)")
+        (LAUNCHER_PATH, "/switch/SwitchCast/SwitchCast.nro", "App Pai (Launcher)"),
+        (CORE_PATH, "/switch/SwitchCast/modules/SwitchCastCore.nro", "Modulo Principal (SwitchCast)")
     ]
 
     for local_path, remote_path, desc in files_to_send:

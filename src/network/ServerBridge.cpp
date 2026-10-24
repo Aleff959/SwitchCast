@@ -336,11 +336,30 @@ int ServerBridge::HandleApi(mg_connection* conn) {
         return 200;
     }
     if (method == "GET" && route == "info") {
+        auto& updater = Updater::OtaUpdater::Instance();
         json info{{"name", mIdentity.friendlyName}, {"author", "Aleff959"},
                   {"description", "Receptor de mídia e streaming de alto desempenho para Nintendo Switch OLED com aceleração NVDEC"},
                   {"uuid", mIdentity.uuid}, {"ip", CurrentIp()},
-                  {"httpPort", mIdentity.httpPort}, {"wsPort", mIdentity.wsPort}, {"version", SWITCHCAST_VERSION_STR}};
+                  {"httpPort", mIdentity.httpPort}, {"wsPort", mIdentity.wsPort},
+                  {"version", SWITCHCAST_VERSION_STR},
+                  {"build", SWITCHCAST_BUILD_NUM},
+                  {"versionFull", SWITCHCAST_VERSION_FULL_STR},
+                  {"otaChannel", updater.GetChannelName()}};
         SendResponse(conn, 200, kJson, info.dump());
+        return 200;
+    }
+    if (method == "GET" && (route == "ota/channel" || route == "system/ota-channel")) {
+        auto& updater = Updater::OtaUpdater::Instance();
+        bool isBeta = (updater.GetChannel() == Updater::OtaChannel::Beta);
+        json res{
+            {"ok", true},
+            {"channel", isBeta ? "beta" : "stable"},
+            {"name", updater.GetChannelName()},
+            {"manifestUrl", isBeta
+                ? "https://raw.githubusercontent.com/Aleff959/SwitchCast/dev/update_manifest.json"
+                : "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/update_manifest.json"}
+        };
+        SendResponse(conn, 200, kJson, res.dump());
         return 200;
     }
     if (method == "GET" && route == "modules") {
@@ -362,6 +381,37 @@ int ServerBridge::HandleApi(mg_connection* conn) {
     }
 
     if (method != "POST") { SendResponse(conn, 405, kJson, R"({"ok":false,"error":"use POST"})"); return 405; }
+
+    if (route == "ota/channel" || route == "system/ota-channel") {
+        auto& updater = Updater::OtaUpdater::Instance();
+        std::string body = ReadBody(conn);
+        std::string target = "";
+        if (!Text::Trim(body).empty()) {
+            try {
+                json j = json::parse(body, nullptr, false);
+                if (j.contains("channel") && j["channel"].is_string()) {
+                    target = j["channel"].get<std::string>();
+                }
+            } catch (...) {}
+        }
+
+        if (target == "beta" || target == "dev") {
+            updater.SetChannel(Updater::OtaChannel::Beta);
+        } else if (target == "stable" || target == "main") {
+            updater.SetChannel(Updater::OtaChannel::Stable);
+        } else {
+            updater.ToggleChannel();
+        }
+
+        bool isBeta = (updater.GetChannel() == Updater::OtaChannel::Beta);
+        json res{
+            {"ok", true},
+            {"channel", isBeta ? "beta" : "stable"},
+            {"name", updater.GetChannelName()}
+        };
+        SendResponse(conn, 200, kJson, res.dump());
+        return 200;
+    }
 
     if (route == "system/rollback") {
         bool success = Updater::OtaUpdater::Instance().RollbackToBackup();

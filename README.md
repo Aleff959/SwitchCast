@@ -4,11 +4,11 @@
   <h1 align="center">SwitchCast</h1>
   <p align="center">
     <b>Receptor de mídia e streaming de alto desempenho com arquitetura modular para o Nintendo Switch</b><br>
-    <i>Versão 2.3.0 &bull; Comp. 29 &bull; Desenvolvido por <b>Aleff959</b></i>
+    <i>Versão 2.4.0 &bull; Comp. 30 &bull; Desenvolvido por <b>Aleff959</b></i>
   </p>
   <p align="center">
-    <img src="https://img.shields.io/badge/Versão-2.3.0-FF2A55?style=flat-square" alt="Version">
-    <img src="https://img.shields.io/badge/Compilação-Comp._29-00C3E3?style=flat-square" alt="Build">
+    <img src="https://img.shields.io/badge/Versão-2.4.0-FF2A55?style=flat-square" alt="Version">
+    <img src="https://img.shields.io/badge/Compilação-Comp._30-00C3E3?style=flat-square" alt="Build">
     <img src="https://img.shields.io/badge/Arquitetura-Modular_Two--Stage-00E5FF?style=flat-square" alt="Modular Architecture">
     <img src="https://img.shields.io/badge/C%2B%2B-20-7C4DFF?style=flat-square" alt="C++20">
     <img src="https://img.shields.io/badge/Renderizador-OpenGL_4.3_Core-10B981?style=flat-square" alt="OpenGL 4.3">
@@ -19,12 +19,16 @@
 
 ---
 
-**SwitchCast v2.3.0 (Comp. 29)** traz uma evolução marcante no ecossistema homebrew para o **Nintendo Switch**. Desenvolvido em **C++20**, o projeto conta com uma nova **Interface Minimalista ("Vamos dar o play?")**, animação fluida de metamorfose matemática onde as **3 barras do menu hambúrguer transformam-se no console Nintendo Switch**, backdrop com desfoque óptico e **símbolos flutuantes estilo DVD Player com física de colisões elásticas 2D**, além de uma **gaveta lateral deslizante** com abas em linha única (`Como Usar`, `Novidades`, `Sobre`), servidor FTP ultrarrápido integrado e decodificação por hardware **Tegra X1 NVDEC** (`nvtegra`).
+**SwitchCast v2.4.0 (Comp. 30)** traz uma evolução marcante no ecossistema homebrew para o **Nintendo Switch**. Desenvolvido em **C++20**, o projeto conta com um novo **Sistema Dual-Channel OTA (Estável vs Beta / Dev)** que permite alternar dinamicamente entre as branches `main` e `dev`, além da nova **Interface Minimalista ("Vamos dar o play?")**, animação fluida de metamorfose matemática onde as **3 barras do menu hambúrguer transformam-se no console Nintendo Switch**, backdrop com desfoque óptico e **símbolos flutuantes estilo DVD Player com física de colisões elásticas 2D**, além de uma **gaveta lateral deslizante** com abas em linha única (`Como Usar`, `Novidades`, `Sobre`), servidor FTP ultrarrápido integrado e decodificação por hardware **Tegra X1 NVDEC** (`nvtegra`).
 
 ---
 
-## ✨ Destaques da Versão 2.3.0 (Comp. 29)
+## ✨ Destaques da Versão 2.4.0 (Comp. 30)
 
+- 🔄 **Sistema Dual-Channel OTA (Estável &amp; Beta / Dev)**:
+  - Alterne instantaneamente entre o canal **Estável** (branch `main`, lançamentos oficiais consolidados) e o canal **Beta / Dev** (branch `dev`, builds e melhorias contínuas).
+  - Controle nativo tanto no console (pressione `(A)` ou toque no Card de Canal OTA na aba *Sobre*) quanto pelo Web Remote via API REST e WebSocket.
+  - As preferências do canal são persistidas em `settings.json` no cartão microSD (`sdmc:/switch/SwitchCast/config/settings.json`).
 - 🎮 **Botão Switch Morph (Interpolação Matemática C++ / Web)**:
   - O botão superior esquerdo não troca imagens: as 3 barras horizontais realizam interpolação geométrica contínua (`t` de `0.0` a `1.0`), tornando-se o Joy-Con L azul (`#00C3E3`), a tela OLED central (`#0B0D11`) e o Joy-Con R vermelho (`#FF3C28`) com pontos analógicos.
 - 🪟 **Tela Frontal Centralizada & Minimalista ("Vamos dar o play?")**:

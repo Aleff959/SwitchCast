@@ -18,6 +18,11 @@ struct CoreUpdateInfo {
     std::vector<std::string> changelog;
 };
 
+enum class OtaChannel {
+    Stable,
+    Beta
+};
+
 enum class OtaStatus {
     Idle,
     CheckingManifest,
@@ -47,6 +52,13 @@ public:
     static constexpr int kCurrentVersionCode = SWITCHCAST_VERSION_CODE;
 
     static OtaUpdater& Instance();
+
+    // 0. CANAL DE ATUALIZAÇÃO (Estável / Beta)
+    OtaChannel GetChannel() const { return mChannel.load(); }
+    std::string GetChannelName() const;
+    void SetChannel(OtaChannel channel);
+    void ToggleChannel();
+    void TriggerManualCheck();
 
     // 1. BOOT GUARD (Anti-Brick): Chamado no início do main()
     bool VerifyBootIntegrity(bool forceRollbackComboPressed);
@@ -115,8 +127,11 @@ public:
     bool IsExitRequested() const { return mExitRequested.load(); }
 
 private:
-    OtaUpdater() = default;
+    OtaUpdater();
     ~OtaUpdater();
+
+    void LoadSettings();
+    void SaveSettings();
 
     void BackgroundCheckerLoop();
     bool CheckRemoteManifestAndDownload();
@@ -129,6 +144,8 @@ private:
     std::atomic<bool> mRestartPending{false};
     std::atomic<bool> mUpdateReady{false};
     std::atomic<bool> mStopChecker{false};
+    std::atomic<bool> mForceCheck{false};
+    std::atomic<OtaChannel> mChannel{OtaChannel::Stable};
 
     // Download tracking
     std::atomic<bool> mIsDownloading{false};

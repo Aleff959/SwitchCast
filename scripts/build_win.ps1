@@ -34,11 +34,19 @@ if (-not $Clean) {
             $size = (Get-Item $coreFile).Length
 
             $json = Get-Content $manifestPath -Raw | ConvertFrom-Json
+            $json.channel = "beta"
             $json.core.sha256 = $hash
             $json.core.size_bytes = $size
-            $json.core.version = "2.3.0"
-            $json.core.version_code = 20300
-            $json.core.download_url = "https://github.com/Aleff959/SwitchCast/releases/download/v2.3.0/SwitchCastCore.nro"
+            $json.core.version = "2.4.0"
+            $json.core.version_code = 20400
+            $json.core.download_url = "https://raw.githubusercontent.com/Aleff959/SwitchCast/dev/SwitchCastCore.nro"
+            $json.core.changelog = @(
+                "Canais OTA: Alterne dinamicamente entre branch main (Estavel) e dev (Beta)",
+                "Versionamento 2.4.0 (Comp. 30): Suporte completo a atualizacao multi-canal",
+                "Web Remote: Toggle de canal OTA integrado diretamente no painel web",
+                "Audio Pro: Downmix 5.1 ITU-R BS.775 e Volume Boost 150% com Soft Limiter",
+                "UI Glass Stealth: Animacao Morph Switch real e DVD bouncing physics"
+            )
             [System.IO.File]::WriteAllText($manifestPath, ($json | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
             Write-Host "OK: Manifest atualizado com SHA256 $hash ($size bytes)"
         }

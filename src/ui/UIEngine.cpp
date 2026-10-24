@@ -289,6 +289,14 @@ void UIEngine::HandleButtons(u64 kDown) {
                 mMenuOpen = false;
                 return;
             }
+            if (kDown & HidNpadButton_A) {
+                if (mActiveDrawerTab == DrawerTab::About) {
+                    updater.ToggleChannel();
+                    std::string ch = (updater.GetChannel() == Updater::OtaChannel::Beta) ? "Beta / Dev" : "Estavel";
+                    ShowToast("Canal OTA: " + ch, 2.5);
+                    return;
+                }
+            }
             if (kDown & HidNpadButton_X) {
                 if (updater.HasUpdateReady() || updater.IsDownloading()) {
                     mCurrentScreen = ScreenView::UpdateCenter;
@@ -505,6 +513,23 @@ void UIEngine::HandleTouch() {
                     }
                     mTouch = Touch{};
                     return;
+                }
+
+                // Toque nos cards da aba Sobre (Card do Canal OTA)
+                if (mActiveDrawerTab == DrawerTab::About) {
+                    const float cardX = 84.0f * s;
+                    const float cardW = drawerW - 84.0f * s - 18.0f * s;
+                    const float ch3Y = 276.0f * s;
+                    const float ch3H = 78.0f * s;
+                    if (mTouch.startX >= cardX && mTouch.startX <= cardX + cardW &&
+                        mTouch.startY >= ch3Y && mTouch.startY <= ch3Y + ch3H) {
+                        auto& updater = Updater::OtaUpdater::Instance();
+                        updater.ToggleChannel();
+                        std::string ch = (updater.GetChannel() == Updater::OtaChannel::Beta) ? "Beta / Dev" : "Estavel";
+                        ShowToast("Canal OTA: " + ch, 2.5);
+                        mTouch = Touch{};
+                        return;
+                    }
                 }
 
                 mTouch = Touch{};
@@ -949,23 +974,23 @@ void UIEngine::RenderDrawer(float s, float dim) {
 
         // Novidade 1
         drawDrawerCard(curY, ch, 0x383D48);
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Audio Pro 5.1:", 17.0f * s, Color::Hex(0x00C3E3, dim));
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "Downmix BS.775 eliminando colisao", 15.0f * s, Color::Hex(0xE4E4E7, dim));
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "acustica surround.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Canais OTA (Estavel & Beta):", 17.0f * s, Color::Hex(0x00C3E3, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "Alterne entre branch main (estavel)", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "e branch dev (beta) na aba Sobre.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
         curY += ch + gap;
 
         // Novidade 2
         drawDrawerCard(curY, ch, 0x383D48);
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Volume Boost 150%:", 17.0f * s, Color::Hex(0xFF3C28, dim));
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "Teto elevado com Soft Limiter", 15.0f * s, Color::Hex(0xE4E4E7, dim));
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "anti-distorcao.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Audio Pro 5.1 & Volume Boost:", 17.0f * s, Color::Hex(0xFF3C28, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "Downmix BS.775 surround e limiter", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "anti-distorcao ate 150%.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
         curY += ch + gap;
 
         // Novidade 3
         drawDrawerCard(curY, ch, 0x383D48);
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Morph Real:", 17.0f * s, Color::Hex(0xF4F4F5, dim));
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "As 3 linhas do menu se transformam", 15.0f * s, Color::Hex(0xE4E4E7, dim));
-        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "fisicamente no Switch.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 12.0f * s, "Morph Real & DVD Bouncing:", 17.0f * s, Color::Hex(0xF4F4F5, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, "As 3 linhas se transformam no Switch", 15.0f * s, Color::Hex(0xE4E4E7, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 56.0f * s, "com simbolos quicando no fundo.", 15.0f * s, Color::Hex(0xE4E4E7, dim));
     } else if (mActiveDrawerTab == DrawerTab::About) {
         const float ch = 78.0f * s;
         const float gap = 14.0f * s;
@@ -989,7 +1014,23 @@ void UIEngine::RenderDrawer(float s, float dim) {
         DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 40.0f * s, "Atmosph\xC3\xA8re CFW  |  Comp. " + std::to_string(SWITCHCAST_BUILD_NUM), 17.5f * s, Color::Hex(0xE4E4E7, dim));
         curY += ch + gap;
 
-        // Card 3: Autor & Repositório
+        // Card 3: Canal OTA (Estável vs Beta / Dev)
+        auto& updater = Updater::OtaUpdater::Instance();
+        bool isBeta = (updater.GetChannel() == Updater::OtaChannel::Beta);
+        drawDrawerCard(curY, ch, isBeta ? 0xFF3C28 : 0x00C3E3);
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "Canal OTA  |  (A) ou Toque p/ alternar", 14.0f * s, Color::Hex(0xA1A1AA, dim));
+        DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 40.0f * s, isBeta ? "Beta / Dev (dev branch)" : "Estavel (main branch)", 17.0f * s, Color::Hex(0xF4F4F5, dim));
+
+        const float chPillW = 84.0f * s;
+        const float chPillH = 26.0f * s;
+        const float chPillX = cardX + cardW - chPillW - 16.0f * s;
+        const float chPillY = curY + 37.0f * s;
+        mRenderer.DrawPill(chPillX, chPillY, chPillW, chPillH, Color::Rgba(0, 0, 0, static_cast<uint8_t>(200 * dim)));
+        mRenderer.DrawPillOutline(chPillX, chPillY, chPillW, chPillH, 1.2f * s, Color::Hex(isBeta ? 0xFF3C28 : 0x00C3E3, dim));
+        DrawShadowedText(mRenderer, chPillX + chPillW * 0.5f, chPillY + 4.5f * s, isBeta ? "BETA" : "ESTAVEL", 13.0f * s, Color::Hex(isBeta ? 0xFF3C28 : 0x00C3E3, dim), TextAlign::Center);
+        curY += ch + gap;
+
+        // Card 4: Autor & Repositório
         drawDrawerCard(curY, ch, 0x2A2E38);
         DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "Autor & Repositorio", 14.5f * s, Color::Hex(0xA1A1AA, dim));
         DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 40.0f * s, "Aleff959  |  GitHub Oficial", 17.5f * s, Color::Hex(0xE4E4E7, dim));

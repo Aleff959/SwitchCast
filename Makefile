@@ -20,7 +20,7 @@ INCLUDES    := src src/common include third_party third_party/civetweb
 
 APP_TITLE   := SwitchCast
 APP_AUTHOR  := Aleff959
-APP_VERSION := 2.3.0
+APP_VERSION := 2.4.0
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 

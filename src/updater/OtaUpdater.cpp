@@ -41,9 +41,82 @@ namespace {
     }
 }
 
+OtaUpdater::OtaUpdater() {
+    LoadSettings();
+}
+
 OtaUpdater& OtaUpdater::Instance() {
     static OtaUpdater instance;
     return instance;
+}
+
+void OtaUpdater::LoadSettings() {
+    std::ifstream ifs(kSettingsFile);
+    if (!ifs.is_open()) return;
+    try {
+        json cfg = json::parse(ifs, nullptr, false);
+        if (!cfg.is_discarded() && cfg.is_object()) {
+            if (cfg.contains("ota_channel") && cfg["ota_channel"].is_string()) {
+                std::string ch = cfg["ota_channel"].get<std::string>();
+                if (ch == "beta" || ch == "dev") {
+                    mChannel.store(OtaChannel::Beta);
+                } else {
+                    mChannel.store(OtaChannel::Stable);
+                }
+            }
+        }
+    } catch (...) {}
+}
+
+void OtaUpdater::SaveSettings() {
+    mkdir("sdmc:/switch/SwitchCast/config", 0777);
+    json cfg = json::object();
+    std::ifstream ifs(kSettingsFile);
+    if (ifs.is_open()) {
+        try {
+            cfg = json::parse(ifs, nullptr, false);
+            if (cfg.is_discarded() || !cfg.is_object()) {
+                cfg = json::object();
+            }
+        } catch (...) {
+            cfg = json::object();
+        }
+        ifs.close();
+    }
+
+    cfg["ota_channel"] = (mChannel.load() == OtaChannel::Beta) ? "beta" : "stable";
+
+    std::ofstream ofs(kSettingsFile, std::ios::trunc);
+    if (ofs.is_open()) {
+        ofs << cfg.dump(4);
+    }
+}
+
+void OtaUpdater::SetChannel(OtaChannel channel) {
+    mChannel.store(channel);
+    SaveSettings();
+    {
+        std::lock_guard<std::mutex> lock(mUpdateMutex);
+        mPendingInfo = CoreUpdateInfo{};
+        mUpdateReady.store(false);
+    }
+    mForceCheck.store(true);
+}
+
+void OtaUpdater::ToggleChannel() {
+    if (mChannel.load() == OtaChannel::Stable) {
+        SetChannel(OtaChannel::Beta);
+    } else {
+        SetChannel(OtaChannel::Stable);
+    }
+}
+
+void OtaUpdater::TriggerManualCheck() {
+    mForceCheck.store(true);
+}
+
+std::string OtaUpdater::GetChannelName() const {
+    return (mChannel.load() == OtaChannel::Beta) ? "Beta / Dev" : "Estável";
 }
 
 OtaUpdater::~OtaUpdater() {
@@ -105,13 +178,19 @@ void OtaUpdater::BackgroundCheckerLoop() {
         // Aguarda 30 minutos antes de checar novamente (em intervalos de 1s para desligamento responsivo)
         for (int i = 0; i < 1800; ++i) {
             if (mStopChecker.load()) return;
+            if (mForceCheck.load()) {
+                mForceCheck.store(false);
+                break;
+            }
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }
 }
 
 bool OtaUpdater::CheckRemoteManifestAndDownload() {
-    std::string manifestUrl = "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/update_manifest.json";
+    std::string manifestUrl = (mChannel.load() == OtaChannel::Beta)
+        ? "https://raw.githubusercontent.com/Aleff959/SwitchCast/dev/update_manifest.json"
+        : "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/update_manifest.json";
 
     std::ifstream sifs(kSettingsFile);
     if (sifs.is_open()) {
@@ -133,7 +212,7 @@ bool OtaUpdater::CheckRemoteManifestAndDownload() {
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchCast-OTA/1.3 (NintendoSwitch)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SwitchCast-OTA/2.4 (NintendoSwitch)");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, OnCurlWriteString);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &manifestBody);
 
@@ -152,8 +231,18 @@ bool OtaUpdater::CheckRemoteManifestAndDownload() {
 
         auto core = j["core"];
         int remoteVersionCode = core.value("version_code", 0);
-        if (remoteVersionCode <= kCurrentVersionCode) {
-            return false; // Já estamos na versão mais recente ou superior
+        bool shouldUpdate = false;
+        if (remoteVersionCode > kCurrentVersionCode) {
+            shouldUpdate = true;
+        } else if (mChannel.load() == OtaChannel::Beta && remoteVersionCode == kCurrentVersionCode) {
+            std::string expectedSha = core.value("sha256", "");
+            if (!expectedSha.empty() && !VerifySha256(GetTargetNroPath(), expectedSha)) {
+                shouldUpdate = true;
+            }
+        }
+
+        if (!shouldUpdate) {
+            return false;
         }
 
         CoreUpdateInfo info;

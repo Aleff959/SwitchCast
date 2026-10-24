@@ -789,6 +789,10 @@ inline const char* GetWebRemoteHtml() {
         <span class="about-item-label">Sistema Operacional</span>
         <span class="about-item-value">Atmosph&egrave;re CFW</span>
       </div>
+      <div class="about-item-row" style="cursor:pointer;" onclick="toggleOtaChannel()">
+        <span class="about-item-label">Canal OTA (Clique p/ alternar)</span>
+        <span class="about-item-value" id="otaChannelLabel" style="color:var(--switch-blue);">Est&aacute;vel (main)</span>
+      </div>
       <div class="about-item-row">
         <span class="about-item-label">Decodificador</span>
         <span class="about-item-value">Nvidia Tegra X1 NVDEC HW (60 FPS)</span>
@@ -813,8 +817,8 @@ inline const char* GetWebRemoteHtml() {
 
     <!-- Rodapé da Gaveta -->
     <div class="drawer-footer">
-      <span>v2.3.0</span>
-      <span class="drawer-footer-comp">Comp. 29</span>
+      <span>v2.4.0</span>
+      <span class="drawer-footer-comp">Comp. 30</span>
     </div>
   </div>
 
@@ -827,7 +831,7 @@ inline const char* GetWebRemoteHtml() {
     <!-- Badge Superior Direito -->
     <div class="top-right-badge">
       <div class="dot"></div>
-      <span>v2.3.0 | Comp. 29</span>
+      <span>v2.4.0 | Comp. 30</span>
     </div>
 
     <!-- Padrão Micro PlayStation -->
@@ -1175,6 +1179,41 @@ inline const char* GetWebRemoteHtml() {
       showToast("Enviando mídia para o Switch...");
     }
 
+    function fetchOtaChannel() {
+      fetch('/api/v1/ota/channel')
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.ok) {
+            const el = document.getElementById('otaChannelLabel');
+            if (el) {
+              el.innerText = data.name + (data.channel === 'beta' ? ' (dev branch)' : ' (main branch)');
+              el.style.color = (data.channel === 'beta') ? 'var(--switch-red)' : 'var(--switch-blue)';
+            }
+          }
+        }).catch(() => {});
+    }
+
+    function toggleOtaChannel() {
+      fetch('/api/v1/ota/channel', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({})
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.ok) {
+          const el = document.getElementById('otaChannelLabel');
+          if (el) {
+            el.innerText = data.name + (data.channel === 'beta' ? ' (dev branch)' : ' (main branch)');
+            el.style.color = (data.channel === 'beta') ? 'var(--switch-red)' : 'var(--switch-blue)';
+          }
+          showToast("Canal alterado: " + data.name);
+        }
+      }).catch(() => {
+        showToast("Erro ao alternar canal");
+      });
+    }
+
     setInterval(() => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         fetch('/api/v1/status')
@@ -1185,6 +1224,7 @@ inline const char* GetWebRemoteHtml() {
     }, 1500);
 
     connectWs();
+    fetchOtaChannel();
   </script>
 </body>
 </html>
