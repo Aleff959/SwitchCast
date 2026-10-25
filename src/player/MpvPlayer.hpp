@@ -41,6 +41,10 @@ public:
     void AddExternalSubtitle(const std::string& subtitleUrl);
     std::string CycleAudioTrack();
     std::string CycleSubtitleTrack();
+    void SetAudioTrack(int id);
+    void SetSubtitleTrack(int id);
+    std::string GetCurrentAudioTrackName();
+    std::string GetCurrentSubtitleTrackName();
 
     // Controle do wallpaper animado de fundo no Switch
     void StartWallpaperLoop();
@@ -51,8 +55,10 @@ public:
         std::string type;
         std::string title;
         std::string lang;
+        std::string codec;
         bool selected = false;
     };
+    std::vector<TrackItem> GetTrackList(const std::string& typeFilter = "");
 
     // Overlay ASS (osd-overlay id 1) na resolução lógica `resX` x `resY`. String vazia remove.
     void SetOsdOverlay(const std::string& assEvents, int resX, int resY);

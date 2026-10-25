@@ -276,6 +276,8 @@ std::vector<MpvPlayer::TrackItem> MpvPlayer::GetTracks(const std::string& typeFi
                     t.title = val.u.string ? val.u.string : "";
                 } else if (std::strcmp(key, "lang") == 0 && val.format == MPV_FORMAT_STRING) {
                     t.lang = val.u.string ? val.u.string : "";
+                } else if (std::strcmp(key, "codec") == 0 && val.format == MPV_FORMAT_STRING) {
+                    t.codec = val.u.string ? val.u.string : "";
                 }
             }
 
@@ -384,6 +386,46 @@ std::string MpvPlayer::CycleSubtitleTrack() {
         mpv_set_property_string(mMpv, "sid", "no");
         return "Legendas: Desativadas";
     }
+}
+
+void MpvPlayer::SetAudioTrack(int id) {
+    if (!mMpv) return;
+    std::string idStr = (id <= 0) ? "auto" : std::to_string(id);
+    mpv_set_property_string(mMpv, "aid", idStr.c_str());
+}
+
+void MpvPlayer::SetSubtitleTrack(int id) {
+    if (!mMpv) return;
+    std::string idStr = (id <= 0) ? "no" : std::to_string(id);
+    mpv_set_property_string(mMpv, "sid", idStr.c_str());
+}
+
+std::vector<MpvPlayer::TrackItem> MpvPlayer::GetTrackList(const std::string& typeFilter) {
+    return GetTracks(typeFilter);
+}
+
+std::string MpvPlayer::GetCurrentAudioTrackName() {
+    if (!mMpv) return "";
+    auto tracks = GetTracks("audio");
+    if (tracks.empty()) return "Nenhuma faixa de audio encontrada";
+    for (size_t i = 0; i < tracks.size(); ++i) {
+        if (tracks[i].selected) {
+            return FriendlyTrackName(tracks[i], static_cast<int>(i), static_cast<int>(tracks.size()), true);
+        }
+    }
+    return FriendlyTrackName(tracks[0], 0, static_cast<int>(tracks.size()), true);
+}
+
+std::string MpvPlayer::GetCurrentSubtitleTrackName() {
+    if (!mMpv) return "";
+    auto tracks = GetTracks("sub");
+    if (tracks.empty()) return "Sem legendas disponiveis";
+    for (size_t i = 0; i < tracks.size(); ++i) {
+        if (tracks[i].selected) {
+            return FriendlyTrackName(tracks[i], static_cast<int>(i), static_cast<int>(tracks.size()), false);
+        }
+    }
+    return "Legendas: Desativadas";
 }
 
 // ---------------------------------------------------------------------------

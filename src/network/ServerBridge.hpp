@@ -53,6 +53,9 @@ private:
     int HandleUpnp(mg_connection* conn);
     int HandleApi(mg_connection* conn);
     int HandleWebRemote(mg_connection* conn);
+    std::string HandleCycleAudio(bool& ok);
+    std::string HandleCycleSubtitle(bool& ok);
+    std::string HandleStatus();
     std::string HandleJsonCommand(const std::string& name, const std::string& body, bool& ok);
     void WsSend(mg_connection* conn, const std::string& text);
     void WsBroadcast(const std::string& text);

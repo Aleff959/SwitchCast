@@ -159,6 +159,14 @@ bool ParseCommand(const std::string& name, const json& j, NetworkCommand& cmd, s
         cmd.type = NetworkCommand::Type::CycleSubtitle;
         return true;
     }
+    if (name == "setAudioTrack") {
+        cmd.type = NetworkCommand::Type::CycleAudio;
+        return true;
+    }
+    if (name == "setSubtitleTrack") {
+        cmd.type = NetworkCommand::Type::CycleSubtitle;
+        return true;
+    }
     err = "comando desconhecido: " + name;
     return false;
 }
@@ -303,6 +311,56 @@ int ServerBridge::HttpApi(mg_connection* conn, void* self) {
     return static_cast<ServerBridge*>(self)->HandleApi(conn);
 }
 
+std::string ServerBridge::HandleCycleAudio(bool& ok) {
+    std::string track = mPlayer ? mPlayer->CycleAudioTrack() : "Audio indisponivel";
+    NetworkCommand cmd;
+    cmd.type = NetworkCommand::Type::CycleAudio;
+    cmd.text = track;
+    QueueCommand(std::move(cmd));
+    ok = true;
+    return json{{"ok", true}, {"track", track}}.dump();
+}
+
+std::string ServerBridge::HandleCycleSubtitle(bool& ok) {
+    std::string track = mPlayer ? mPlayer->CycleSubtitleTrack() : "Legendas indisponiveis";
+    NetworkCommand cmd;
+    cmd.type = NetworkCommand::Type::CycleSubtitle;
+    cmd.text = track;
+    QueueCommand(std::move(cmd));
+    ok = true;
+    return json{{"ok", true}, {"track", track}}.dump();
+}
+
+std::string ServerBridge::HandleStatus() {
+    json s = SnapshotToJson(mPlayer ? mPlayer->Snapshot() : PlayerSnapshot{});
+    std::string activeAudio = mPlayer ? mPlayer->GetCurrentAudioTrackName() : "";
+    std::string activeSub = mPlayer ? mPlayer->GetCurrentSubtitleTrackName() : "";
+    s["active_audio"] = activeAudio;
+    s["active_subtitle"] = activeSub;
+    s["audioTrack"] = activeAudio;
+    s["subtitleTrack"] = activeSub;
+
+    json audioTracks = json::array();
+    json subTracks = json::array();
+    if (mPlayer) {
+        for (const auto& t : mPlayer->GetTrackList("audio")) {
+            audioTracks.push_back({
+                {"id", t.id}, {"type", t.type}, {"title", t.title},
+                {"lang", t.lang}, {"codec", t.codec}, {"selected", t.selected}
+            });
+        }
+        for (const auto& t : mPlayer->GetTrackList("sub")) {
+            subTracks.push_back({
+                {"id", t.id}, {"type", t.type}, {"title", t.title},
+                {"lang", t.lang}, {"codec", t.codec}, {"selected", t.selected}
+            });
+        }
+    }
+    s["audio_tracks"] = audioTracks;
+    s["subtitle_tracks"] = subTracks;
+    return s.dump();
+}
+
 std::string ServerBridge::HandleJsonCommand(const std::string& name, const std::string& body, bool& ok) {
     json j = json::object();
     if (!Text::Trim(body).empty()) {
@@ -311,6 +369,24 @@ std::string ServerBridge::HandleJsonCommand(const std::string& name, const std::
             ok = false;
             return json{{"ok", false}, {"error", "JSON inválido"}}.dump();
         }
+    }
+    if (name == "cycleAudio") {
+        return HandleCycleAudio(ok);
+    }
+    if (name == "cycleSubtitle" || name == "cycleSub") {
+        return HandleCycleSubtitle(ok);
+    }
+    if (name == "setAudioTrack") {
+        int trackId = j.contains("id") && j["id"].is_number() ? j["id"].get<int>() : 1;
+        if (mPlayer) mPlayer->SetAudioTrack(trackId);
+        ok = true;
+        return json{{"ok", true}}.dump();
+    }
+    if (name == "setSubtitleTrack") {
+        int trackId = j.contains("id") && j["id"].is_number() ? j["id"].get<int>() : 0;
+        if (mPlayer) mPlayer->SetSubtitleTrack(trackId);
+        ok = true;
+        return json{{"ok", true}}.dump();
     }
     NetworkCommand cmd;
     std::string err;
@@ -332,7 +408,7 @@ int ServerBridge::HandleApi(mg_connection* conn) {
     if (method == "OPTIONS") { SendResponse(conn, 204, kJson, ""); return 204; }
 
     if (method == "GET" && route == "status") {
-        SendResponse(conn, 200, kJson, SnapshotToJson(mPlayer->Snapshot()).dump());
+        SendResponse(conn, 200, kJson, HandleStatus());
         return 200;
     }
     if (method == "GET" && route == "info") {

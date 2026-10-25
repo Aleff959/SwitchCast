@@ -8,8 +8,8 @@
 
 #define SWITCHCAST_VERSION_STR       "2.4.0"
 #define SWITCHCAST_VERSION_CODE      20400
-#define SWITCHCAST_BUILD_NUM         30
-#define SWITCHCAST_VERSION_FULL_STR  "2.4.0 | Comp. 30"
+#define SWITCHCAST_BUILD_NUM         31
+#define SWITCHCAST_VERSION_FULL_STR  "2.4.0 | Comp. 31"
 
 namespace SwitchCast {
 

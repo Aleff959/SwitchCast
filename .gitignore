@@ -25,4 +25,6 @@ Desktop.ini
 .vscode/
 .idea/
 *.tmp
+.agents/
+TEST_READY.md
 

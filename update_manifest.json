@@ -1,39 +1,39 @@
 {
-    "schema_version":  1,
-    "channel":  "beta",
-    "core":  {
-                 "version":  "2.4.0",
-                 "version_code":  20400,
-                 "min_hos_version":  "16.0.0",
-                 "download_url":  "https://raw.githubusercontent.com/Aleff959/SwitchCast/dev/SwitchCastCore.nro",
-                 "sha256":  "2386e1ba3978b5ca8bb5e2d544ba630898e147bed09475ffd584e56b9d7c8758",
-                 "size_bytes":  30408659,
-                 "changelog":  [
-                                   "Canais OTA: Alterne dinamicamente entre branch main (Estavel) e dev (Beta)",
-                                   "Versionamento 2.4.0 (Comp. 30): Suporte completo a atualizacao multi-canal",
-                                   "Web Remote: Toggle de canal OTA integrado diretamente no painel web",
-                                   "Audio Pro: Downmix 5.1 ITU-R BS.775 e Volume Boost 150% com Soft Limiter",
-                                   "UI Glass Stealth: Animacao Morph Switch real e DVD bouncing physics"
-                               ]
-             },
-    "modules":  [
-                    {
-                        "id":  "protocol.roku_bridge",
-                        "name":  "Roku \u0026 DLNA Extended Bridge",
-                        "version":  "1.0.2",
-                        "entry_file":  "protocols/roku_bridge.js",
-                        "download_url":  "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/roku_bridge.js",
-                        "sha256":  "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
-                        "hot_reload":  true
-                    },
-                    {
-                        "id":  "parser.xtream_iptv",
-                        "name":  "Xtream Codes \u0026 M3U8 Advanced Parser",
-                        "version":  "1.2.0",
-                        "entry_file":  "protocols/xtream_iptv.js",
-                        "download_url":  "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/xtream_iptv.js",
-                        "sha256":  "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
-                        "hot_reload":  true
-                    }
-                ]
+    "schema_version": 1,
+    "channel": "beta",
+    "core": {
+        "version": "2.4.0",
+        "version_code": 20400,
+        "min_hos_version": "16.0.0",
+        "download_url": "https://raw.githubusercontent.com/Aleff959/SwitchCast/dev/SwitchCastCore.nro",
+        "sha256": "b93556e4130be1d3ea85e61cc0b21aa124b190017a9187c875bdf6b3fb67720e",
+        "size_bytes": 30412755,
+        "changelog": [
+            "Audio e Legendas: Ciclo e selecao de trilhas de audio e legendas na UI e Web Remote",
+            "Wallpaper Customizado: Reproducao suave em loop de sdmc:/switch/SwitchCast/wallpaper.mp4",
+            "OTA Dinamico: Modal da Central de Atualizacao renderiza o changelog do manifest",
+            "Canais OTA: Alterne dinamicamente entre branch main (Estavel) e dev (Beta)",
+            "Versionamento 2.4.0 (Comp. 31): Otimizacoes completas e validacao E2E"
+        ]
+    },
+    "modules": [
+        {
+            "id": "protocol.roku_bridge",
+            "name": "Roku & DLNA Extended Bridge",
+            "version": "1.0.2",
+            "entry_file": "protocols/roku_bridge.js",
+            "download_url": "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/roku_bridge.js",
+            "sha256": "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+            "hot_reload": true
+        },
+        {
+            "id": "parser.xtream_iptv",
+            "name": "Xtream Codes & M3U8 Advanced Parser",
+            "version": "1.2.0",
+            "entry_file": "protocols/xtream_iptv.js",
+            "download_url": "https://raw.githubusercontent.com/Aleff959/SwitchCast/main/modules/protocols/xtream_iptv.js",
+            "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+            "hot_reload": true
+        }
+    ]
 }

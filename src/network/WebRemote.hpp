@@ -818,7 +818,7 @@ inline const char* GetWebRemoteHtml() {
     <!-- Rodapé da Gaveta -->
     <div class="drawer-footer">
       <span>v2.4.0</span>
-      <span class="drawer-footer-comp">Comp. 30</span>
+      <span class="drawer-footer-comp">Comp. 31</span>
     </div>
   </div>
 
@@ -831,7 +831,7 @@ inline const char* GetWebRemoteHtml() {
     <!-- Badge Superior Direito -->
     <div class="top-right-badge">
       <div class="dot"></div>
-      <span>v2.4.0 | Comp. 30</span>
+      <span>v2.4.0 | Comp. 31</span>
     </div>
 
     <!-- Padrão Micro PlayStation -->
@@ -886,6 +886,15 @@ inline const char* GetWebRemoteHtml() {
             <button id="btnPlayPause" class="btn-ctrl btn-play-pause" onclick="togglePlayPause()">&#9654;</button>
             <button class="btn-ctrl" onclick="sendCmd('stop')">&#9209; Parar</button>
             <button class="btn-ctrl" onclick="sendCmd('seek', {offsetMs: 10000})">+10s &#9193;</button>
+          </div>
+
+          <div class="controls-row" style="margin-top: 8px; gap: 8px;">
+            <button id="btnAudioTrack" class="btn-ctrl" onclick="cycleAudioTrack()" style="flex:1;" title="Alternar Trilha de Áudio">&#127911; &Aacute;udio</button>
+            <button id="btnSubTrack" class="btn-ctrl" onclick="cycleSubtitleTrack()" style="flex:1;" title="Alternar e Ativar/Desativar Legendas">&#128172; Legendas</button>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); padding: 0 4px; margin-top: 4px;">
+            <span id="currentAudioLabel">&Aacute;udio: --</span>
+            <span id="currentSubLabel">Legendas: --</span>
           </div>
 
           <div style="display:flex; align-items:center; gap:10px; width:100%; padding-top:4px;">
@@ -1122,6 +1131,14 @@ inline const char* GetWebRemoteHtml() {
         isMuted = s.muted;
         document.getElementById('btnMute').innerText = isMuted ? "Mudo (On)" : "Mudo";
       }
+      if (s.active_audio || s.audioTrack) {
+        const el = document.getElementById('currentAudioLabel');
+        if (el) el.innerText = s.active_audio || s.audioTrack;
+      }
+      if (s.active_subtitle || s.subtitleTrack) {
+        const el = document.getElementById('currentSubLabel');
+        if (el) el.innerText = s.active_subtitle || s.subtitleTrack;
+      }
     }
 
     function sendCmd(cmdName, payload = {}) {
@@ -1156,6 +1173,48 @@ inline const char* GetWebRemoteHtml() {
     function onVolumeChange(val) {
       document.getElementById('volLabel').innerText = val + "%";
       sendCmd('volume', {level: parseInt(val)});
+    }
+
+    function cycleAudioTrack() {
+      fetch('/api/v1/cycleAudio', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({})
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.ok) {
+          const track = data.track || "Áudio alternado";
+          showToast(track);
+          const el = document.getElementById('currentAudioLabel');
+          if (el) el.innerText = track;
+        }
+      })
+      .catch(() => {
+        sendCmd('cycleAudio');
+        showToast("Alternando áudio...");
+      });
+    }
+
+    function cycleSubtitleTrack() {
+      fetch('/api/v1/cycleSubtitle', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({})
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.ok) {
+          const track = data.track || "Legendas alternadas";
+          showToast(track);
+          const el = document.getElementById('currentSubLabel');
+          if (el) el.innerText = track;
+        }
+      })
+      .catch(() => {
+        sendCmd('cycleSubtitle');
+        showToast("Alternando legendas...");
+      });
     }
 
     const seekSlider = document.getElementById('seekSlider');

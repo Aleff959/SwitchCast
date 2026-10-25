@@ -41,11 +41,11 @@ if (-not $Clean) {
             $json.core.version_code = 20400
             $json.core.download_url = "https://raw.githubusercontent.com/Aleff959/SwitchCast/dev/SwitchCastCore.nro"
             $json.core.changelog = @(
+                "Audio e Legendas: Ciclo e selecao de trilhas de audio e legendas na UI e Web Remote",
+                "Wallpaper Customizado: Reproducao suave em loop de sdmc:/switch/SwitchCast/wallpaper.mp4",
+                "OTA Dinamico: Modal da Central de Atualizacao renderiza o changelog do manifest",
                 "Canais OTA: Alterne dinamicamente entre branch main (Estavel) e dev (Beta)",
-                "Versionamento 2.4.0 (Comp. 30): Suporte completo a atualizacao multi-canal",
-                "Web Remote: Toggle de canal OTA integrado diretamente no painel web",
-                "Audio Pro: Downmix 5.1 ITU-R BS.775 e Volume Boost 150% com Soft Limiter",
-                "UI Glass Stealth: Animacao Morph Switch real e DVD bouncing physics"
+                "Versionamento 2.4.0 (Comp. 31): Otimizacoes completas e validacao E2E"
             )
             [System.IO.File]::WriteAllText($manifestPath, ($json | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
             Write-Host "OK: Manifest atualizado com SHA256 $hash ($size bytes)"

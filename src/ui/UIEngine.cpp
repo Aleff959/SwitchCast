@@ -221,8 +221,12 @@ void UIEngine::DrainNetworkCommands() {
                 break;
             case NetworkCommand::Type::SetMute:      mPlayer->SetMute(cmd.flag); break;
             case NetworkCommand::Type::AddSubtitle:  mPlayer->AddExternalSubtitle(cmd.text); break;
-            case NetworkCommand::Type::CycleAudio:   ShowToast(mPlayer->CycleAudioTrack()); break;
-            case NetworkCommand::Type::CycleSubtitle: ShowToast(mPlayer->CycleSubtitleTrack()); break;
+            case NetworkCommand::Type::CycleAudio:
+                ShowToast(cmd.text.empty() ? mPlayer->CycleAudioTrack() : cmd.text);
+                break;
+            case NetworkCommand::Type::CycleSubtitle:
+                ShowToast(cmd.text.empty() ? mPlayer->CycleSubtitleTrack() : cmd.text);
+                break;
         }
     }
 }
@@ -326,6 +330,42 @@ void UIEngine::HandleButtons(u64 kDown) {
             mActiveDrawerTab = DrawerTab::About;
             return;
         }
+    } else {
+        // Durante reprodução ativa de mídia:
+        // (+) ou (-) abre/fecha a gaveta lateral sem parar o vídeo
+        if (kDown & (HidNpadButton_Plus | HidNpadButton_Minus)) {
+            mMenuOpen = !mMenuOpen;
+            return;
+        }
+
+        if (mMenuOpen) {
+            if (kDown & HidNpadButton_L) {
+                mActiveDrawerTab = static_cast<DrawerTab>((static_cast<int>(mActiveDrawerTab) + 2) % 3);
+                return;
+            }
+            if (kDown & HidNpadButton_R) {
+                mActiveDrawerTab = static_cast<DrawerTab>((static_cast<int>(mActiveDrawerTab) + 1) % 3);
+                return;
+            }
+            if (kDown & HidNpadButton_B) {
+                mMenuOpen = false;
+                return;
+            }
+            if (kDown & HidNpadButton_X) {
+                ShowToast(mPlayer->CycleAudioTrack());
+                return;
+            }
+            if (kDown & HidNpadButton_Y) {
+                ShowToast(mPlayer->CycleSubtitleTrack());
+                return;
+            }
+            if (kDown & HidNpadButton_A) {
+                mPlayer->TogglePause();
+                ShowOsd(kOsdTimeoutSec);
+                return;
+            }
+            return;
+        }
     }
 
     if (kDown & (HidNpadButton_L | HidNpadButton_ZL)) {
@@ -335,10 +375,6 @@ void UIEngine::HandleButtons(u64 kDown) {
     if (kDown & (HidNpadButton_R | HidNpadButton_ZR)) {
         mPlayer->AdjustVolume(kVolumeStep);
         ShowToast("Volume " + std::to_string(std::min(150, snap.volume + kVolumeStep)) + "%");
-    }
-    if (kDown & HidNpadButton_Minus) {
-        mPlayer->SetMute(!snap.muted);
-        ShowToast(snap.muted ? "Som ativado" : "Mudo");
     }
 
     if (!hasMedia) return;
@@ -471,7 +507,7 @@ void UIEngine::HandleTouch() {
             return;
         }
 
-        if (mCurrentScreen == ScreenView::Dashboard && !mPlayer->HasMedia()) {
+        if (mCurrentScreen == ScreenView::Dashboard) {
             const float s = (mWidth >= 1920) ? 1.5f : 1.0f;
 
             // 1. Toque no Botão Morph (canto superior esquerdo)
@@ -624,6 +660,13 @@ void UIEngine::Render() {
         mpv_render_context_render(mRender, params);
 
         RenderVideoOverlay(snap);
+
+        if (mMenuAnimProgress > 0.001f) {
+            const float s = (mWidth >= 1920) ? 1.5f : 1.0f;
+            mRenderer.BeginFrame(mWidth, mHeight);
+            RenderDrawer(s, 1.0f);
+            mRenderer.EndFrame();
+        }
 
         eglSwapBuffers(mDisplay, mSurface);
         mpv_render_context_report_swap(mRender);
@@ -965,6 +1008,18 @@ void UIEngine::RenderDrawer(float s, float dim) {
         DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "No Console:", 17.5f * s, Color::Hex(0xFF3C28, dim));
         DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 38.0f * s, "(A) Pausa  |  (X) Audio  |  (Y) Legendas", 15.5f * s, Color::Hex(0xE4E4E7, dim));
         DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 60.0f * s, "(L / R) Ajuste de Volume ate 150%.", 15.5f * s, Color::Hex(0xE4E4E7, dim));
+        curY += ch + gap;
+
+        if (mPlayer && mPlayer->HasMedia()) {
+            const float trkH = 74.0f * s;
+            drawDrawerCard(curY, trkH, 0x00C3E3);
+            std::string aName = mPlayer->GetCurrentAudioTrackName();
+            std::string sName = mPlayer->GetCurrentSubtitleTrackName();
+            DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 13.0f * s, "Faixas Ativas (X: Audio, Y: Legendas):", 16.0f * s, Color::Hex(0x00C3E3, dim));
+            DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 36.0f * s, aName, 14.0f * s, Color::Hex(0xF4F4F5, dim));
+            DrawShadowedText(mRenderer, cardX + 16.0f * s, curY + 54.0f * s, sName, 14.0f * s, Color::Hex(0xC4C7C5, dim));
+            curY += trkH + gap;
+        }
     } else if (mActiveDrawerTab == DrawerTab::WhatsNew) {
         DrawShadowedText(mRenderer, cardX + 2.0f * s, curY, "COMPILACAO " + std::to_string(SWITCHCAST_BUILD_NUM) + " (HOJE)", 14.5f * s, Color::Hex(0xA1A1AA, dim));
         curY += 26.0f * s;
@@ -1790,21 +1845,90 @@ void UIEngine::RenderUpdateCenter() {
     const float tileSpacing = (mHeight >= 1080) ? 12.0f : 8.0f;
 
     struct FeatureItem {
-        const char* code;
+        std::string code;
         Color avatarBg;
         Color avatarText;
-        const char* title;
-        const char* desc;
+        std::string title;
+        std::string desc;
+    };
+    std::vector<FeatureItem> items;
+
+    const Color bgPalette[4] = {
+        Color::Hex(0x1F3854), Color::Hex(0x133E26),
+        Color::Hex(0x3B2456), Color::Hex(0x453300)
+    };
+    const Color textPalette[4] = {
+        Color::Hex(0xA8C7FA), Color::Hex(0xA8EAB4),
+        Color::Hex(0xD0BCFF), Color::Hex(0xFEE48A)
     };
 
-    const FeatureItem items[4] = {
-        {"UI", Color::Hex(0x1F3854), Color::Hex(0xA8C7FA), "Interface Renovada e Fluida", "Navegacao suave, superficies limpas e tipografia nitida."},
-        {"60", Color::Hex(0x133E26), Color::Hex(0xA8EAB4), "Reproducao Fluida a 60 FPS", "Streaming de video em tempo real com aceleracao por hardware."},
-        {"SD", Color::Hex(0x3B2456), Color::Hex(0xD0BCFF), "Estabilidade de Armazenamento", "Gravacao direta e sincronizacao aprimorada no cartao microSD."},
-        {"OK", Color::Hex(0x453300), Color::Hex(0xFEE48A), "Protecao e Seguranca", "Backup automatico e restauracao de emergencia segurando L + R."}
-    };
+    // Renderização dinâmica do changelog via OtaUpdater::Instance().GetAvailableUpdate() / GetPendingUpdateInfo()
+    std::vector<std::string> validEntries;
+    for (const auto& rawEntry : info.changelog) {
+        size_t first = rawEntry.find_first_not_of(" \t\r\n");
+        if (first != std::string::npos) {
+            size_t last = rawEntry.find_last_not_of(" \t\r\n");
+            std::string trimmed = rawEntry.substr(first, (last - first + 1));
+            if (!trimmed.empty()) {
+                validEntries.push_back(trimmed);
+            }
+        }
+    }
 
-    for (int i = 0; i < 4; ++i) {
+    if (validEntries.empty()) {
+        items.push_back({
+            "SC",
+            Color::Hex(0x1F3854),
+            Color::Hex(0xA8C7FA),
+            "Nenhuma nota de vers\xC3\xA3o dispon\xC3\xADvel",
+            "Consulte os detalhes da atualizacao no repositorio oficial."
+        });
+    } else {
+        for (size_t i = 0; i < validEntries.size() && i < 4; ++i) {
+            const std::string& raw = validEntries[i];
+            std::string title;
+            std::string desc;
+            std::string code;
+
+            size_t colonPos = raw.find(':');
+            if (colonPos != std::string::npos) {
+                title = raw.substr(0, colonPos);
+                size_t tf = title.find_first_not_of(" \t\r\n");
+                size_t tl = title.find_last_not_of(" \t\r\n");
+                if (tf != std::string::npos) title = title.substr(tf, (tl - tf + 1));
+
+                desc = raw.substr(colonPos + 1);
+                size_t df = desc.find_first_not_of(" \t\r\n");
+                size_t dl = desc.find_last_not_of(" \t\r\n");
+                if (df != std::string::npos) desc = desc.substr(df, (dl - df + 1));
+
+                if (title.length() >= 2) {
+                    code = title.substr(0, 2);
+                    for (char& c : code) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                } else {
+                    code = "SC";
+                }
+            } else {
+                title = raw.substr(0, 30);
+                desc = raw;
+                code = "0" + std::to_string(i + 1);
+            }
+
+            if (desc.length() > 80) {
+                desc = desc.substr(0, 77) + "...";
+            }
+
+            items.push_back({
+                code,
+                bgPalette[i % 4],
+                textPalette[i % 4],
+                title,
+                desc
+            });
+        }
+    }
+
+    for (size_t i = 0; i < items.size(); ++i) {
         const float ty = curY + i * (tileH + tileSpacing);
 
         // Container do Card
